@@ -1,0 +1,1114 @@
+[
+    {
+        "example_info": "Basic Example",
+        "sentence": "The man in the hat are walking to the park.",
+        "expected_parsing_result": {
+            "The man in the hat are walking to the park.": {
+                "TYPE": "SS",
+                "TerminalPunct": ".",
+                "COMPONENTS": {
+                    "The man in the hat":{
+                        "TYPE": "NP",
+                        "ROLE": "SBJ",
+                        "COMPONENTS": {
+                            "The man": {
+                                "TYPE": "SNP",
+                                "ROLE": "HEAD",
+                                "COMPONENTS": {
+                                    "The": {"TYPE": "DET", "ROLE": "MOD"},
+                                    "man": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                }
+                            },
+                            "in the hat":{
+                                "TYPE": "PP",
+                                "COMPONENTS": {
+                                    "in": {"TYPE": "AMPW"},
+                                    "the hat": {
+                                        "TYPE": "SNP",
+                                        "COMPONENTS": {
+                                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                            "hat": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "are walking to the park": {
+                        "TYPE": "VP", "ROLE": "PRED",
+                        "COMPONENTS": {
+                            "are walking": {"TYPE": "SVP", "ROLE": "SPRED"},
+                            "to the park": {
+                                "TYPE": "PP",
+                                "COMPONENTS": {
+                                    "to": {"TYPE": "AMPW"},
+                                    "the park": {
+                                        "TYPE": "SNP",
+                                        "COMPONENTS": {
+                                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                            "park": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }   
+        }
+    },
+    {
+        "example_info": "Example about attribute",
+        "sentence": "Albert Einstein (1879-1955)",
+        "expected_parsing_result": {
+            "Albert Einstein (1879-1955)": {
+                "TYPE": "NP",
+                "COMPONENTS": {
+                    "Albert Einstein": {
+                        "TYPE": "SNP",
+                        "COMPONENTS": {
+                            "Albert": {"TYPE": "SNP", "ROLE": "MOD"},
+                            "Einstein": {"TYPE": "SNP", "ROLE": "HEAD"}
+                        }
+                    },
+                    "1879-1955": {
+                        "TYPE": "EXPRESSION",
+                        "ROLE": "ATTR_VALUE",
+                        "BracketPunct": "()",
+                        "COMPONENTS": {
+                            "1879": {"TYPE": "NUMBER"},
+                            "-": {"TYPE": "OP"},
+                            "1955": {"TYPE": "NUMBER"}
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example of expression",
+        "sentence": "06/04/2001 05:54 PM",
+        "expected_parsing_result": {
+            "06/04/2001 05:54 PM": {
+                "TYPE": "EXPRESSION",
+                "COMPONENTS": {
+                    "06/04/2001": {
+                        "TYPE": "EXPRESSION",
+                        "COMPONENTS": {
+                            "{1}/{2}/{3}": {"TYPE": "OP"},
+                            "06": {"TYPE": "NUMBER"},
+                            "04": {"TYPE": "NUMBER"},
+                            "2001": {"TYPE": "NUMBER"}
+                        }
+                    },
+                    "05:54 PM": {
+                        "TYPE": "EXPRESSION",
+                        "COMPONENTS": {
+                            "05:54": {
+                                "TYPE": "EXPRESSION", 
+                                "COMPONENTS": 
+                                {
+                                    "{1}:{2}": {"TYPE": "OP"}, 
+                                    "05": {"TYPE": "NUMBER"}, 
+                                    "54": {"TYPE": "NUMBER"}
+                                    }
+                                },
+                            "PM": {"TYPE": "SNP"}
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example of deverbal compound modified noun phrase",
+        "sentence": "the DNA- and the steroid -binding region",
+        "expected_parsing_result": {
+            "the DNA- and the steroid -binding region": {
+                "TYPE": "NP",
+                "COMPONENTS": {
+                    "the DNA- and steroid -binding": {
+                        "TYPE": "ACM", 
+                        "ROLE": "MOD",
+                        "COMPONENTS": {
+                            "the DNA- and the steroid -":{
+                                "TYPE": "ACM_OBJC",
+                                "COMPONENTS": {
+                                    "{1} and {2}": {"TYPE": "CCP"},
+                                    "the DNA-": {
+                                        "PLACEHOLDER": "{1}",
+                                        "TYPE": "ACM_OBJ", 
+                                        "COMPONENTS": {
+                                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                            "DNA": {"TYPE": "SNP", "ROLE": "HEAD"},
+                                            "-": {"TYPE": "ACM_MARKER"}
+                                        }
+                                    },
+                                    "the steroid -": {
+                                        "PLACEHOLDER": "{2}",
+                                        "TYPE": "ACM_OBJ", 
+                                        "COMPONENTS": {
+                                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                            "steroid": {"TYPE": "SNP", "ROLE": "HEAD"},
+                                            "-": {"TYPE": "ACM_MARKER"}
+                                        }
+                                    }
+                                }
+                            },
+                            "binding": {"TYPE": "SVP", "ROLE": "PRED"}
+                        }
+                    },
+                    "region": {"TYPE": "SNP", "ROLE": "HEAD"}
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example of complex combination of list and expression",
+        "sentence": "- Ram Tackett (E-mail).vcf 4222",
+        "expected_parsing_result": {
+            "- Ram Tackett (E-mail).vcf 4222": {
+                "TYPE": "LIST",
+                "COMPONENTS": {
+                    "-": {"TYPE": "OTHER"},
+                    "Ram Tackett (E-mail).vcf": {
+                        "TYPE": "EXPRESSION",
+                        "COMPONENTS": {
+                            "Ram Tackett": {
+                                "TYPE": "SNP",
+                                "COMPONENTS": {
+                                    "Ram": {"TYPE": "SNP", "ROLE": "MOD"},
+                                    "Tackett": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                }
+                            },
+                            "E-mail": {
+                                "TYPE": "SNP", 
+                                "BracketPunct": "()"
+                            },
+                            "vcf": {"TYPE": "SNP", "StartPunct": "."}
+                        }
+                    },
+                    "4222": {"TYPE": "NUMBER"}
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with possessive noun phrase",
+        "sentence": "The man's red hat",
+        "expected_parsing_result": {
+            "The man's red hat": {
+                "TYPE": "POSS_SNP",
+                "COMPONENTS": {
+                    "'s": {"TYPE": "POSS_MARKER"},
+                    "The man": {
+                        "TYPE": "SNP",
+                        "ROLE": "OWNER",
+                        "COMPONENTS": {
+                            "The": {"TYPE": "DET", "ROLE": "MOD"},
+                            "man": {"TYPE": "SNP", "ROLE": "HEAD"}  
+                        }
+                    },
+                    "red hat": {
+                        "TYPE": "SNP",
+                        "ROLE": "POSSESSION",
+                        "COMPONENTS": {
+                            "red": {"TYPE": "SADJ", "ROLE": "MOD"},
+                            "hat": {"TYPE": "SNP", "ROLE": "HEAD"}
+                        }
+                    }
+                }   
+            }
+        }
+    },
+    {
+        "example_info": "Example of list ",
+        "sentence": "EY4096.3 PERFORMANCE 01-Feb-02 P 202,989 $195,610",
+        "expected_parsing_result": {
+            "EY4096.3 PERFORMANCE 01-Feb-02 P 202,989 $195,610": {
+                "TYPE": "LIST",
+                "COMPONENTS": {
+                    "EY4096.3": {"TYPE": "SNP"},
+                    "PERFORMANCE": {"TYPE": "SNP"},
+                    "01-Feb-02": {"TYPE": "SNP"},
+                    "P": {"TYPE": "SNP"},
+                    "202,989": {"TYPE": "SNP"},
+                    "$195,610": {"TYPE": "SNP"}
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with attribute, index, and list of items",
+        "sentence": "a. Steve Jones Phone: 555-9814 Email: jones@abc.edf",
+        "expected_parsing_result": {
+            "a. Steve Jones Phone: 555-9814 Email: jones@abc.edf": {
+                "TYPE": "NP",
+                "COMPONENTS": {
+                    "a": {"TYPE": "OTHER", "ROLE": "INDEX", "TerminalPunct": "."},
+                    "Steve Jones": {
+                        "TYPE": "SNP",
+                        "COMPONENTS": {
+                            "Steve": {"TYPE": "SNP", "ROLE": "MOD"},
+                            "Jones": {"TYPE": "SNP", "ROLE": "HEAD"}
+                        }
+                    },
+                    
+                    "Phone: 555-9814": {
+                        "TYPE": "ATTR",
+                        "COMPONENTS": {
+                            "Phone": {"TYPE": "SNP", "ROLE": "ATTR_NAME", "TerminalPunct": ":"},
+                            "555-9814": {
+                                "TYPE": "SNP",
+                                "ROLE": "ATTR_VALUE"
+                            }
+                        }
+                    },
+                    "Email: jones@abc.edf": {
+                        "TYPE": "ATTR",
+                        "COMPONENTS": {
+                            "Email": {"TYPE": "SNP", "ROLE": "ATTR_NAME", "TerminalPunct": ":"},
+                            "jones@abc.edf": {
+                                "TYPE": "SNP",
+                                "ROLE": "ATTR_VALUE"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with discourse",
+        "sentence": "Um, I'm going to the museum.",
+        "expected_parsing_result": {
+            "Um, I'm going to the museum.": {
+                "TYPE": "SS",
+                "TerminalPunct": ".",
+                "COMPONENTS": {
+                    "Um": {"TYPE": "INTJ", "ROLE": "DISCOURSE", "TerminalPunct": ","},
+                    "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                    "'m going to the museum": {
+                        "TYPE": "VP", "ROLE": "PRED",
+                        "COMPONENTS": {
+                            "'m going": {"TYPE": "SVP", "ROLE": "SPRED"},
+                            "to the museum": {
+                                "TYPE": "PP",
+                                "COMPONENTS": {
+                                    "to": {"TYPE": "AMPW"},
+                                    "the museum": {
+                                        "TYPE": "SNP",
+                                        "COMPONENTS": {
+                                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                            "museum": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with CCP and SCP",
+        "sentence": "I've already seen the movie, but I don't want to see the new one, and I'm going to see the old one.",
+        "expected_parsing_result": {
+            "I've already seen the movie, but I don't want to see the new one, and I'm going to see the old one.": {
+                "TYPE": "SC",
+                "TerminalPunct": ".",
+                "COMPONENTS": {
+                    "{1}, but {2}, and {3}":{"TYPE": "CCP"},
+                    "I've already seen the movie": {
+                        "TYPE": "SS",
+                        "PLACEHOLDER": "{1}",
+                        "COMPONENTS": {
+                            "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                            "'ve already seen the movie": {
+                                "TYPE": "VP", "ROLE": "PRED",
+                                "COMPONENTS": {
+                                    "'ve already seen": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                    "the movie": {
+                                        "TYPE": "SNP", 
+                                        "ROLE": "DOBJ",
+                                        "COMPONENTS": {
+                                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                            "movie": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "I don't want to see the new one": {
+                        "TYPE": "SS",
+                        "PLACEHOLDER": "{2}",
+                        "COMPONENTS": {
+                            "I": {"TYPE": "SNP", "ROLE": "SBJ"}, 
+                            "don't want to see the new one": {
+                                "TYPE": "VP", "ROLE": "PRED",
+                                "COMPONENTS": {
+                                    "don't want": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                    "to see the new one": {
+                                        "TYPE": "PP",
+                                        "COMPONENTS": {
+                                            "to": {"TYPE": "AMPW"},
+                                            "see the new one": {
+                                                "TYPE": "VP",
+                                                "COMPONENTS": {
+                                                    "see": {"TYPE": "SVP", "ROLE": "PRED"},
+                                                    "the new one": {
+                                                        "TYPE": "SNP", 
+                                                        "ROLE": "DOBJ",
+                                                        "COMPONENTS": {
+                                                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                                            "new": {"TYPE": "SADJ", "ROLE": "MOD"},
+                                                            "one": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "I'm going to see the old one": {
+                        "TYPE": "SS",
+                        "PLACEHOLDER": "{3}",
+                        "COMPONENTS": {
+                            "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                            "'m going to see the old one": {
+                                "TYPE": "VP", "ROLE": "PRED",
+                                "COMPONENTS": {
+                                    "'m going": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                    "to see the old one": {
+                                        "TYPE": "PP",
+                                        "COMPONENTS": {
+                                            "to": {"TYPE": "AMPW"},
+                                            "see the old one": {
+                                                "TYPE": "VP",
+                                                "COMPONENTS": {
+                                                    "see": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                    "the old one": {
+                                                        "TYPE": "SNP", 
+                                                        "ROLE": "DOBJ",
+                                                        "COMPONENTS": {
+                                                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                                            "old": {"TYPE": "SADJ", "ROLE": "MOD"},
+                                                            "one": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with relative sentence parsing",
+        "sentence": "The house in which she was born is now a museum.",
+        "expected_parsing_result": {
+            "The house in which she was born is now a museum.": {
+                "TYPE": "SS",
+                "TerminalPunct": ".",
+                "COMPONENTS": {
+                    "The house in which she was born": {
+                        "TYPE": "NP",
+                        "ROLE": "SBJ",
+                        "COMPONENTS": {
+                            "The house": {
+                                "TYPE": "SNP",
+                                "ROLE": "HEAD",
+                                "COMPONENTS": {
+                                    "The": {"TYPE": "DET", "ROLE": "MOD"},
+                                    "house": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                }
+                            },
+                            "in which she was born": {
+                                "TYPE": "WH_RS",
+                                "ROLE": "MOD",
+                                "COMPONENTS": {
+                                    "in": {"TYPE": "AMPW"},
+                                    "which": {
+                                        "TYPE": "WH_PHRASE",
+                                        "RELATION": [["as:DOBJ", "in"], ["as:REF", "The house"]]
+                                    },
+                                    "she was born": {
+                                        "TYPE": "SS",
+                                        "COMPONENTS": {
+                                            "she": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                            "was born": {"TYPE": "SVP", "ROLE": "SPRED"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "is now a museum": {
+                        "TYPE": "VP",
+                        "ROLE": "PRED",
+                        "COMPONENTS": {
+                            "is": {"TYPE": "SLVP", "ROLE": "SPRED"},
+                            "now": {"TYPE": "SNP", "ROLE": "MOD"},
+                            "a museum": {"TYPE": "SNP", "ROLE": "DOBJ"}
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with verb adverbial modification",
+        "sentence": "Being exhausted, he went to bed early.",
+        "expected_parsing_result": {
+            "Being exhausted, he went to bed early.": {
+                "TYPE": "SS",
+                "TerminalPunct": ".",
+                "COMPONENTS": {
+                    "Being exhausted,": {
+                        "TYPE": "VP",
+                        "ROLE": "MOD",
+                        "TerminalPunct": ",",
+                        "COMPONENTS": {
+                            "Being": {
+                                "TYPE": "SLVP",
+                                "ROLE": "PRED",
+                                "RELATION": [["SBJ", "he"]]
+                            },
+                            "exhausted": {"TYPE": "SADJ", "ROLE": "DOBJ"}
+                        }
+                    },
+                    "he went to bed early": {
+                        "TYPE": "SVP",
+                        "COMPONENTS": {
+                            "he": {"TYPE": "SNP", "ROLE": "SBJ"},
+                            "went to bed early": {
+                                "TYPE": "SVP", "ROLE": "PRED",
+                                "COMPONENTS":{
+                                    "went": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                    "to bed": {
+                                        "TYPE": "PP",
+                                        "COMPONENTS": {
+                                            "to": {"TYPE": "AMPW"},
+                                            "bed": {"TYPE": "SNP"}
+                                        }
+                                    },
+                                    "early": {"TYPE": "SADV", "ROLE": "MOD"}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with wh-sentence as subject ",
+        "sentence": "On which platform we can do it is a good question.",
+        "expected_parsing_result": {
+            "On which platform we can do it is a good question.": {
+                "TYPE": "SS",
+                "COMPONENTS": {
+                    "On which platform we can do it": {
+                        "TYPE": "WH_NS",
+                        "ROLE": "SBJ",
+                        "COMPONENTS": {
+                            "On": {"TYPE": "AMPW"},
+                            "which platform": {"TYPE": "WH_PHRASE", "RELATION": [["as:DOBJ", "On"]]},
+                            "we can do it": {
+                                "TYPE": "SS",
+                                "COMPONENTS": {
+                                    "we": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                    "can do it": {
+                                        "TYPE": "VP", "ROLE": "PRED",
+                                        "COMPONENTS": {
+                                            "can do": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                            "it": {"TYPE": "SNP", "ROLE": "DOBJ"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "is a good question": {
+                        "TYPE": "VP", 
+                        "ROLE": "PRED",
+                        "COMPONENTS": {
+                            "is": {"TYPE": "SLVP", "ROLE": "SPRED"},
+                            "a good question": {
+                                "TYPE": "SNP", 
+                                "ROLE": "DOBJ",
+                                "COMPONENTS": {
+                                    "a": {"TYPE": "DET", "ROLE": "MOD"},
+                                    "good": {"TYPE": "SADJ", "ROLE": "MOD"},
+                                    "question": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with determiner like 'some', 'those', 'this', 'that' as noun phrase",
+        "sentence": "some of the students",
+        "expected_parsing_result": {
+            "some of the students": {
+                "TYPE": "NP",
+                "COMPONENTS": {
+                    "some": {"TYPE": "SNP", "ROLE": "HEAD"},
+                    "of the students": {
+                        "TYPE": "PP",
+                        "ROLE": "MOD",
+                        "COMPONENTS": {
+                            "of": {"TYPE": "AMPW"},
+                            "the students": {"TYPE": "SNP", "COMPONENTS": {
+                                "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                "students": {"TYPE": "SNP", "ROLE": "HEAD"}
+                            }} 
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with sentence as an object",
+        "sentence": "'I'm going out,' the mother said, 'Take care of your younger sister.'",
+        "expected_parsing_result": {
+            "'I'm going out,' the mother said, 'Take care of your younger sister.'": {
+                "TYPE": "SS",
+                "COMPONENTS": {
+                    "the mother": {
+                        "TYPE": "SNP", 
+                        "ROLE": "SBJ",
+                        "COMPONENTS": {
+                            "the": {"TYPE": "DET", "ROLE": "MOD"},
+                            "mother": {"TYPE": "SNP", "ROLE": "HEAD"}
+                        }
+                    },
+                    "said": {"TYPE": "SVP", "ROLE": "PRED"},
+                    "'I'm going out,' 'Take care of your younger sister.'": {
+                        "TYPE": "SC",
+                        "ROLE": "DOBJ",
+                        "COMPONENTS": {
+                            "I'm going out,": {
+                                "TYPE": "SS",
+                                "BracketPunct":"''",
+                                "TerminalPunct":",",
+                                "PLACEHOLDER": "{1}",
+                                "COMPONENTS": {
+                                    "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                    "'m going out": {
+                                        "TYPE": "VP",
+                                        "ROLE": "PRED",
+                                        "COMPONENTS": {
+                                            "'m going": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                            "out": {"TYPE": "SADV", "ROLE": "MOD"}
+                                        }
+                                    }
+                                }
+                            },
+                            "Take care of your younger sister": {
+                                "TYPE": "VP",
+                                "BracketPunct":"''",
+                                "TerminalPunct":".",
+                                "PLACEHOLDER": "{2}",
+                                "COMPONENTS": {
+                                    "Take": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                    "care": {"TYPE": "SNP", "ROLE": "DOBJ"},
+                                    "of your younger sister.": {
+                                        "TYPE": "PP",
+                                        "COMPONENTS": {
+                                            "of": {"TYPE": "AMPW"},
+                                            "your younger sister.": {
+                                                "TYPE": "SNP",
+                                                "COMPONENTS": {
+                                                    "your": {"TYPE": "SADJ", "ROLE": "MOD"},
+                                                    "younger": {"TYPE": "SADJ", "ROLE": "MOD"},
+                                                    "sister": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with relative sentence",
+        "sentence": "The book I gave you yesterday",
+        "expected_parsing_result": {
+            "The book I gave you yesterday": {
+                "TYPE": "NP",
+                "COMPONENTS": {
+                    "The book": {
+                        "TYPE": "SNP",
+                        "RELATION": [["as:DOBJ", "gave"]],
+                        "COMPONENTS": {
+                            "The": {"TYPE": "DET", "ROLE": "MOD"},
+                            "book": {"TYPE": "SNP", "ROLE": "HEAD"}
+                        }
+                    },
+                    "I gave you yesterday": {
+                        "TYPE": "THAT_RS",
+                        "COMPONENTS": {
+                            "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                            "gave you yesterday": {
+                                "TYPE": "VP", "ROLE": "PRED", 
+                                "COMPONENTS": {
+                                    "gave": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                    "you": {"TYPE": "SNP", "ROLE": "IOBJ"},
+                                    "yesterday": {"TYPE": "SNP", "ROLE": "MOD"}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with complex modification structure inside a noun phrase",
+        "sentence": "I like the great graduate student residence policy",
+        "expected_parsing_result": {
+            "I like the great graduate student residence policy": {
+                "TYPE": "SS",
+                "COMPONENTS": {
+                    "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                    "like the great graduate student residence policy": {
+                        "TYPE": "VP", "ROLE": "PRED", 
+                        "COMPONENTS": {
+                            "like": {"TYPE": "SVP", "ROLE": "SPRED"},
+                            "the great graduate student residence policy": {
+                                "TYPE": "SNP",
+                                "ROLE": "DOBJ",
+                                "COMPONENTS": {
+                                    "the": {"TYPE": "DET", "ROLE": "MOD"},
+                                    "great": {"TYPE": "SADJ", "ROLE": "MOD"},
+                                    "graduate student residence policy": {
+                                        "TYPE": "SNP",
+                                        "ROLE": "HEAD",
+                                        "COMPONENTS": {
+                                            "policy": {"TYPE": "SNP", "ROLE": "HEAD"},
+                                            "graduate student residence": {
+                                                "TYPE": "SNP", 
+                                                "ROLE": "MOD",
+                                                "COMPONENTS": {
+                                                    "graduate student": {
+                                                        "TYPE": "SNP", 
+                                                        "ROLE": "MOD",
+                                                        "COMPONENTS": {
+                                                            "graduate": {"TYPE": "SNP", "ROLE": "MOD"},
+                                                            "student": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                        }
+                                                    },
+                                                    "residence": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with complex structure",
+        "sentence": "I decided to go for a walk because I had been sitting all day, even though it was getting dark and I knew that I would be tired afterward, but after I stepped outside, I realized I forgot my jacket and had to call someone to get it.",
+        "expected_parsing_result": {
+            "I decided to go for a walk because I had been sitting all day, even though it was getting dark and I knew that I would be tired afterward, but after I stepped outside, I realized I forgot my jacket and had to call someone to get it.": {
+                "TYPE": "SC",
+                "TerminalPunct": ".",
+                "COMPONENTS": {
+                    "{1}, but {2}": {"TYPE": "CCP"},
+                    "I decided to go for a walk because I had been sitting all day, even though it was getting dark and I knew that I would be tired afterward": {
+                        "TYPE": "SUBSMS",
+                        "PLACEHOLDER": "{1}",
+                        "COMPONENTS": {
+                            "I decided to go for a walk because I had been sitting all day": {
+                                "TYPE": "SUBSMS",
+                                "COMPONENTS": {
+                                    "I decided to go for a walk": {
+                                        "TYPE": "SS",
+                                        "COMPONENTS": {
+                                            "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                            "decided to go for a walk": {
+                                                "TYPE": "VP", "ROLE": "PRED", 
+                                                "COMPONENTS": {
+                                                    "decided": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                    "to go for a walk": {
+                                                        "TYPE": "VP",
+                                                        "ROLE": "DOBJ",
+                                                        "COMPONENTS": {
+                                                            "to go": {"TYPE": "SVP", "ROLE": "PRED"},
+                                                            "for a walk": {
+                                                                "TYPE": "PP",
+                                                                "COMPONENTS": {
+                                                                    "for": {"TYPE": "AMPW"},
+                                                                    "a walk": {"TYPE": "SNP",
+                                                                        "COMPONENTS": {
+                                                                            "a": {"TYPE": "DET", "ROLE": "MOD"},
+                                                                            "walk": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "because I had been sitting all day": {
+                                        "TYPE": "SUBS",
+                                        "COMPONENTS": {
+                                            "{1} because {2}": {"TYPE": "SCP"},
+                                            "I had been sitting all day": {
+                                                "TYPE": "SS",
+                                                "PLACEHOLDER": "{2}",
+                                                "COMPONENTS": {
+                                                    "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                                    "had been sitting all day": {
+                                                        "TYPE": "VP", "ROLE": "PRED", 
+                                                        "COMPONENTS": {
+                                                            "had been sitting": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                            "all day": {"TYPE": "SNP", "ROLE": "MOD"}
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "even though it was getting dark and I knew that I would be tired afterward": {
+                                "TYPE": "SUBS",
+                                "COMPONENTS": {
+                                    "{1} even though {2}": {"TYPE": "SCP"},
+                                    "it was getting dark and I knew that I would be tired afterward": {  
+                                        "TYPE": "SC",
+                                        "PLACEHOLDER": "{2}",
+                                        "COMPONENTS": {
+                                            "{1} and {2}": {"TYPE": "CCP"},
+                                            "it was getting dark": {
+                                                "TYPE": "SS",
+                                                "PLACEHOLDER": "{1}",
+                                                "COMPONENTS": {
+                                                    "it": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                                    "was getting dark": {
+                                                        "TYPE": "VP", "ROLE": "PRED", 
+                                                        "COMPONENTS": {
+                                                            "was getting": {"TYPE": "SLVP", "ROLE": "SPRED"},
+                                                            "dark": {"TYPE": "SADJ", "ROLE": "DOBJ"}
+                                                        }
+                                                    }
+                                                }   
+                                            },
+                                            "I knew that I would be tired afterward": {
+                                                "TYPE": "SS",
+                                                "PLACEHOLDER": "{2}",
+                                                "COMPONENTS": {
+                                                    "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                                    "knew that I would be tired afterward": {
+                                                        "TYPE": "VP", "ROLE": "PRED", 
+                                                        "COMPONENTS": {
+                                                            "knew": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                            "that I would be tired afterward": {
+                                                                "TYPE": "COMP_NS",
+                                                                "ROLE": "DOBJ",
+                                                                "COMPONENTS": {
+                                                                    "that": {"TYPE": "NS_COMPLEMENTIZER"},
+                                                                    "I would be tired afterward": {
+                                                                        "TYPE": "SS",
+                                                                        "COMPONENTS": {
+                                                                            "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                                                            "would be tired afterward": {
+                                                                                "TYPE": "VP", "ROLE": "PRED", 
+                                                                                "COMPONENTS": {
+                                                                                    "would be": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                                                    "tired": {"TYPE": "SADJ", "ROLE": "DOBJ"},
+                                                                                    "afterward": {"TYPE": "SADV", "ROLE": "MOD"}
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "after I stepped outside, I realized I forgot my jacket and had to call someone to get it": {
+                        "TYPE": "SUBSMS",
+                        "PLACEHOLDER": "{2}",
+                        "COMPONENTS": {
+                            "I realized I forgot my jacket and had to call someone to get it": {
+                                "TYPE": "SS",
+                                "COMPONENTS": {
+                                    "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                    "realized I forgot my jacket and had to call someone to get it": {
+                                        "TYPE": "VP", "ROLE": "PRED", 
+                                        "COMPONENTS": {
+                                            "realized": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                            "I forgot my jacket and had to call someone to get it": {
+                                                "TYPE": "COMP_NS",
+                                                "ROLE": "DOBJ",
+                                                "COMPONENTS": {
+                                                    "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                                    "forgot my jacket and had to call someone to get it": {
+                                                        "TYPE": "VPC",
+                                                        "ROLE": "PRED",
+                                                        "COMPONENTS": {
+                                                            "{1} and {2}": {"TYPE": "CCP"},
+                                                            "forgot my jacket": {
+                                                                "TYPE": "VP", 
+                                                                "ROLE": "PRED",
+                                                                "PLACEHOLDER": "{1}",
+                                                                "COMPONENTS": {
+                                                                    "forgot": {"TYPE": "SVP", "ROLE": "PRED"},
+                                                                    "my jacket": {
+                                                                        "TYPE": "SNP", 
+                                                                        "ROLE": "DOBJ",
+                                                                        "COMPONENTS": {
+                                                                            "my": {"TYPE": "SADJ", "ROLE": "MOD"},
+                                                                            "jacket": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            "had to call someone to get it": {
+                                                                "TYPE": "VP",
+                                                                "ROLE": "PRED",
+                                                                "PLACEHOLDER": "{2}",
+                                                                "COMPONENTS": {
+                                                                    "had to call": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                                    "someone": {"TYPE": "SNP", "ROLE": "DOBJ"},
+                                                                    "to get it": {
+                                                                        "TYPE": "VP",
+                                                                        "ROLE": "OBJ_COMPLEMENT",
+                                                                        "COMPONENTS": {
+                                                                            "to get": {"TYPE": "SVP", "ROLE": "PRED"},
+                                                                            "it":  {"TYPE": "SNP", "ROLE": "DOBJ"}
+                                                                        }
+                                                                    }
+                                                                    
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "after I stepped outside": {
+                                "TYPE": "SUBS",
+                                "COMPONENTS": {
+                                    "after {2}, {1}": {"TYPE": "SCP"},
+                                    "I stepped outside": {
+                                        "TYPE": "SS",
+                                        "PLACEHOLDER": "{2}",
+                                        "COMPONENTS": {
+                                            "I": {"TYPE": "SNP", "ROLE": "SBJ"},
+                                            "stepped outside": {
+                                                "TYPE": "VP", "ROLE": "PRED", 
+                                                "COMPONENTS": {
+                                                    "stepped": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                    "outside": {"TYPE": "SADV", "ROLE": "MOD"}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "example_info": "Example with complex modification",
+        "sentence": "IL-4 and IL-13 induced dose- and time-dependent increases in IL-1RI and IL-1RII mRNA levels .",
+        "expected_parsing_result": {
+            "IL-4 and IL-13 induced dose- and time-dependent increases in IL-1RI and IL-1RII mRNA levels .": {
+                "TYPE": "SS",
+                "COMPONENTS": {
+                    "IL-4 and IL-13": {
+                        "TYPE": "NPC",
+                        "ROLE": "SBJ",
+                        "COMPONENTS": {
+                            "{1} and {2}": {"TYPE": "CCP"},
+                            "IL-4": {"TYPE": "SNP", "ROLE": "HEAD", "PLACEHOLDER": "{1}"},
+                            "IL-13": {"TYPE": "SNP", "ROLE": "HEAD", "PLACEHOLDER": "{2}"}
+                        }
+                    },
+                    "induced dose- and time-dependent increases in IL-1RI and IL-1RII mRNA levels": {
+                        "TYPE": "VP",
+                        "ROLE": "PRED",
+                        "COMPONENTS": {
+                            "induced": {"TYPE": "SVP", "ROLE": "SPRED"},
+                            "dose- and time-dependent increases in IL-1RI and IL-1RII mRNA levels": {
+                                "TYPE": "SNP",
+                                "ROLE": "DOBJ",
+                                "COMPONENTS": {
+                                    "dose- and time-dependent increases": {
+                                        "TYPE": "SNP", 
+                                        "ROLE": "HEAD",
+                                        "COMPONENTS": {
+                                            "dose- and time-dependent": {
+                                                "TYPE": "ACM", 
+                                                "ROLE": "MOD",
+                                                "COMPONENTS": {
+                                                    "dose- and time-": {
+                                                        "TYPE": "ACM_OBJC", "ROLE": "MOD",
+                                                        "COMPONENTS": {
+                                                            "{1} and {2}": {"TYPE": "CCP"},
+                                                            "dose-": {
+                                                                "TYPE": "ACM_OBJ", "PLACEHOLDER": "{1}",
+                                                                "COMPONENTS": {
+                                                                    "dose": {"TYPE": "SNP"},
+                                                                    "-": {"TYPE": "ACM_MARKER"}
+                                                                }
+                                                            },
+                                                            "time-": {
+                                                                "TYPE": "ACM_OBJ", "PLACEHOLDER": "{2}",
+                                                                "COMPONENTS": {
+                                                                    "time": {"TYPE": "SNP"},
+                                                                    "-": {"TYPE": "ACM_MARKER"}
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "dependent": {"TYPE": "SADJ"}
+                                                }
+                                            },
+                                            "increases": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                        }
+                                    },
+                                    "in IL-1RI and IL-1RII mRNA levels": {
+                                        "TYPE": "PP",
+                                        "COMPONENTS": {
+                                            "in": {"TYPE": "AMPW"},
+                                            "IL-1RI and IL-1RII mRNA levels": {
+                                                "TYPE": "SNP",
+                                                "COMPONENTS": {
+                                                    "IL-1RI and IL-1RII": {"TYPE": "NPC", "ROLE": "MOD",
+                                                        "COMPONENTS": {
+                                                            "{1} and {2}": {"TYPE": "CCP"},
+                                                            "IL-1RI": {"TYPE": "SNP",  "PLACEHOLDER": "{1}"},
+                                                            "IL-1RII": {"TYPE": "SNP",  "PLACEHOLDER": "{2}"}
+                                                        }
+                                                    },
+                                                    "mRNA levels": {"TYPE": "SNP", "ROLE": "HEAD",
+                                                        "COMPONENTS": {
+                                                            "mRNA": {"TYPE": "SNP", "ROLE": "MOD"},
+                                                            "levels": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                        }
+                                                    }
+                                                }
+                                            }   
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }   
+        }
+    },
+    {
+        "example_info": "Example with multiple object complemeter   ",
+        "sentence": "The dealer wanted $1300 to fix that and another $1500 to fix some other things.",
+        "expected_parsing_result": {
+            "The dealer wanted $1300 to fix that and another $1500 to fix some other things.": {
+                "TYPE": "SS",
+                "TerminalPunct": ".",
+                "COMPONENTS": {
+                    "The dealer": {
+                        "TYPE": "SNP",
+                        "ROLE": "SBJ",
+                        "COMPONENTS": {
+                            "The": {"TYPE": "DET", "ROLE": "MOD"},
+                            "dealer": {"TYPE": "SNP", "ROLE": "HEAD"}
+                        }
+                    },
+                    "wanted $1300 to fix that and another $1500 to fix some other things": {
+                        "TYPE": "VP",
+                        "ROLE": "PRED",
+                        "COMPONENTS": {
+                            "wanted": {"TYPE": "SVP", "ROLE": "SPRED"},
+                            "$1300 to fix that and another $1500 to fix some other things": {
+                                "TYPE": "NPC", "ROLE": "DOBJ",
+                                "COMPONENTS": {
+                                    "{1} and {2}": {"TYPE": "CCP"},
+                                    "$1300 to fix that": {
+                                        "TYPE": "NP","PLACEHOLDER": "{1}",
+                                        "COMPONENTS": {
+                                            "$1300": {"TYPE": "SNP", "ROLE": "HEAD"},
+                                            "to fix that": {"TYPE": "VP", "ROLE": "MOD",
+                                                "COMPONENTS": {
+                                                    "to fix": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                    "that": {"TYPE": "SNP", "ROLE": "DOBJ"}
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "another $1500 to fix some other things": {
+                                        "TYPE": "SNP", "ROLE": "HEAD", "PLACEHOLDER": "{2}",
+                                        "COMPONENTS": {
+                                            "another": {"TYPE": "SNP", "ROLE": "MOD"},
+                                            "$1500": {"TYPE": "SNP", "ROLE": "HEAD"},
+                                            "to fix some other things.": {
+                                                "TYPE": "VP", "ROLE": "MOD",
+                                                "COMPONENTS": {
+                                                    "to fix": {"TYPE": "SVP", "ROLE": "SPRED"},
+                                                    "some other things": {
+                                                        "TYPE": "SNP", "ROLE": "DOBJ",
+                                                        "COMPONENTS": {
+                                                            "some": {"TYPE": "DET", "ROLE": "MOD"},
+                                                            "other": {"TYPE": "SADJ", "ROLE": "MOD"},
+                                                            "things": {"TYPE": "SNP", "ROLE": "HEAD"}
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+]
