@@ -1,7 +1,6 @@
 from copy import deepcopy
-import threading
 
-from .oia_evolver import OIAEvolver
+import threading
 
 import queue
 import copy
@@ -9,7 +8,6 @@ from collections import defaultdict, OrderedDict
 import traceback
 
 import networkx as nx
-from .standardize import OIAStandardizer
 from oia.concept.oia.standard import OIANodeType, QUESTION_WORDS
 from oia.structure.gpgraph import GPGraph, GPGraphVisualizer, GPGPhraseNode, GPGAuxNode, GPGNode
 
@@ -128,9 +126,9 @@ def get_modification_priority(oia_graph: GPGraph, node, modification_node):
             if isinstance(c, GPGPhraseNode):
                 c_words = list(c.words(with_aux=False))
                 min_modification_pos = min(min_modification_pos, min(c_words))
-        # 如果修饰词在中心词之前，给予奖励；否则不奖励
+        
         positional_bonus = 100 if min_modification_pos < min_node_pos else 0
-        # 如果距离超过1，每超过1个 token 扣除一定分数
+        
         distance_penalty_factor = 5
         distance_penalty = (min_dist - 1) * distance_penalty_factor if min_dist > 1 else 0
 
@@ -1078,17 +1076,6 @@ def hierarchical_view(original_oia_graph: GPGraph, debug_info=None):
     return oia_graph
 
 
-
-class HierarchicalViewEvolver(OIAEvolver):
-    """
-    convert from oia
-    """
-    def evolve(self, oia_graph: GPGraph, debug_info=None, *args, **kwargs):
-
-
-        copied_oia_graph = copy.deepcopy(oia_graph)
-        hoia_view = hierarchical_view(copied_oia_graph, debug_info=debug_info)
-        return hoia_view
 
 
 
