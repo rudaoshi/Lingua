@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lingua"
+version = "0.1.0"
+description = "Lingua graph parsing code, data, and demos."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "gradio>=4.0.0",
+    "huggingface-hub>=0.16.0",
+    "jsonlines>=3.1.0",
+    "networkx>=3.0",
+    "numpy>=1.24.0",
+    "pillow>=10.0.0",
+    "safetensors>=0.4.0",
+    "scipy>=1.10.0",
+    "spacy>=3.7.0",
+    "torch>=2.0.0",
+    "tqdm>=4.66.0",
+    "transformers>=4.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

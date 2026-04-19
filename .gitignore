@@ -1,0 +1,23 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+.idea/
+.vscode/
+
+# Release and experiment artifacts
+artifacts/
+outputs/
+debug/
+tmp/
+
+# Local snapshots that should not be part of the public repo
+code.zip
+dataset.zip
+wordgraph/
+
