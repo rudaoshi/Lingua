@@ -101,7 +101,8 @@ symbol_nodelabel2edge = {
     "Modification":"@modification_of",
     "Parataxis":"@parataxis",
     "Ref":"@ref_of",
-    "Vocative":"@vocative_of"
+    "Vocative":"@vocative_of",
+    "Whether":"@whether_of",
 }
     
 
@@ -120,7 +121,7 @@ symbol_nodelabel2pos = {
     "Parataxis": "ConjunctionalFunctor",
     "Ref": "ReferentialPredicator",
     "Vocative": "ModificationalFunctor",
-    "Whether": "GeneralFunctor", # Whether is handled by property
+    "Whether": "LogicalPredicator",
 }
 
 

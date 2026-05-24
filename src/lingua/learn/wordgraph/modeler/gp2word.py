@@ -22,7 +22,8 @@ symbol_nodelabel2edge = {
     "Modification":"@modification_of",
     "Parataxis":"@parataxis",
     "Ref":"@ref_of",
-    "Vocative":"@vocative_of"
+    "Vocative":"@vocative_of",
+    "Whether":"@whether_of",
 }
     
 
@@ -41,7 +42,7 @@ symbol_nodelabel2pos = {
     "Parataxis": "ConjunctionalFunctor",
     "Ref": "ReferentialPredicator",
     "Vocative": "ModificationalFunctor",
-    "Whether": "GeneralFunctor", # Whether is handled by property
+    "Whether": "LogicalPredicator",
 }
 
 
@@ -90,10 +91,10 @@ def remove_whether_aux(lingua_graph: GPGraph, ordered_nodes: list, debug=False):
         if not lingua_graph.has_node(visiting_node):
             continue 
 
-        edge2children_map = edge2children(lingua_graph, visiting_node)
-
         if visiting_node.label == "Whether":
-            assert "func.arg" in edge2children_map, "func.arg not found"
+            edge2children_map = edge2children(lingua_graph, visiting_node)
+            if "func.arg" not in edge2children_map:
+                continue
             func_child = edge2children_map["func.arg"][0]
 
             for parent, edge in list(lingua_graph.parents(visiting_node)):
@@ -147,8 +148,10 @@ def get_upper_layer_aux(lingua_graph: GPGraph, target_node: GPGNode, sorted_node
     if filter_func is not None:
         upper_aux_nodes = [node for node in upper_aux_nodes if filter_func(node)]
 
-    assert len(upper_aux_nodes) <= 1, "upper aux nodes should be at most one"
-    if len(upper_aux_nodes) == 1:
+    # Shared structures can be referenced by multiple upper aux nodes, e.g. a
+    # name Expression used by both Ref and Modification. Callers only need to
+    # know whether any upper layer exists so the lower aux can be processed later.
+    if len(upper_aux_nodes) >= 1:
         return upper_aux_nodes[0]
     else:
         return None
@@ -573,6 +576,9 @@ def expand_multi_word_node(lingua_graph: GPGraph, debug=False):
     update_idx = 0
     for visiting_node in list(lingua_graph.nodes()):
 
+        if not isinstance(visiting_node, GPGPhraseNode):
+            continue
+
         words = list(visiting_node.words(with_aux=False))
         if len(words) > 1:
             word_nodes = []
@@ -659,4 +665,3 @@ def lingua2wordlingua(lingua_graph: GPGraph, debug=False):
         raise e
 
     return lingua_graph, updated, debug_info
-
