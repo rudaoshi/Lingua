@@ -920,7 +920,54 @@ close/FactualPredicator
 
 ---
 
-### 6.15 Punctuation
+### 6.15 Document Metadata / Header Fragments
+
+训练数据中可能出现 section header、speaker label、field label、key-value label、UI fragment 等文档元数据片段与正文内容拼接在同一个样本中。此类片段应保留 token coverage，但不得强行解释为正文命题的普通 predicate、argument 或 modifier。
+
+基本原则：
+
+1. 若片段只是栏目名、页面标题、字段名、角色标签或界面控件文本，且不参与正文事实语义，应作为低语义权重的 discourse metadata 处理。
+2. 这类 metadata token 可以建成 `NominalConstant` 或必要时的轻量 wrapper，并通过 `as:discourse` / `discourse` 连接到正文子图，以保持 single-root DAG 与 token coverage。
+3. metadata 不得作为正文事实谓词的主语、宾语、补语、普通修饰体或逻辑连接词，除非文本明确表达它参与该事实。
+4. `Overview Since 1992, P`、`Biography X was born...`、`History P` 等结构中，`Overview` / `Biography` / `History` 是 header，不应修饰 `Since`、`X` 或 `P` 的核心谓词；正文命题应独立恢复。
+5. 冒号、破折号等分隔符若只是 header 与正文的边界，应作为局部 punctuation / discourse boundary，而不是事实谓词。
+6. 若样本本身是纯 key-value / field-value 记录，没有独立正文谓词，可使用 `AttributePredicator` 或 symbol node `Attribute` 表示该元数据关系；key / field label 对应属性名，value 对应属性值，冒号、破折号仅作为 boundary punctuation。
+7. 若 key-value 中缺少被赋予属性的外部实体，可用当前记录或可恢复 value 作为 `pred.arg.1`，但不得虚构未出现的业务实体；无法恢复的上下文实体可用 `Missing`，并在评估中视为低语义信息。
+
+示例：
+
+```text
+Overview Since 1992, the festival has striven...
+```
+
+推荐：
+
+```text
+./PunctuationalConstant
+  as:punctuation -> Since/ModificationalFunctor
+
+Since/ModificationalFunctor
+  variable -> has striven
+  body -> 1992
+  as:discourse -> Overview
+```
+
+或等价地由正文 root 通过 `discourse` / `as:discourse` 挂接 `Overview`，只要 `DESC(root)` 能恢复正文命题且 `Overview` 不进入核心 PFA。
+
+判错：
+
+| 情况 | 严重程度 |
+|---|---|
+| header 被当作正文主语、宾语或核心修饰体 | major |
+| speaker label 被当作说话内容的事实谓词 | major |
+| field label / key label 被当作内容实体的一部分 | major |
+| 纯 key-value 记录用 `Attribute` / `AttributePredicator` 表示 | 正确 |
+| UI fragment 被强行解析为普通命题 | major |
+| metadata 仅作为 discourse metadata 挂接 | 正确 / minor |
+
+---
+
+### 6.16 Punctuation
 
 标点通常是辅助结构，但在以下情况中很重要：
 
@@ -1344,6 +1391,7 @@ Return the evaluation JSON only.
 12. 冗余 `Modification` 应在不损失 recoverability 的前提下去除；不得用 `Modification` 包装已经自足的逻辑、并列、属性或指代关系。
 13. 评估论元、修饰和 wrapper 结构时必须依据 `DESC(v)` 的可恢复性；不得仅因 `SELF(v)` 是标点、修饰词、`Modification`、`Ref` 或其他 wrapper 就判错。
 14. 多重修饰的链式嵌套必须符合语义亲疏和 scope 顺序；`DESC(v)` 可恢复不能豁免近层/远层修饰内外顺序错误。
+15. header、speaker label、field label、key-value label、UI fragment 等文档元数据片段不得进入正文核心 PFA；应作为 discourse metadata 或局部 boundary 保留。
 
 以下规则建议作为 soft constraints：
 

@@ -1,0 +1,22 @@
+{
+  "sentence": "She gave me a book.",
+  "lingua": {
+    "meta": {},
+    "words": ["She", " gave", " me", " a", " book", "."],
+    "graph": {
+      "nodes": [
+        {"spans": [[1, 1]], "type": "FactualPredicator"},
+        {"spans": [[0, 0]], "type": "NominalConstant"},
+        {"spans": [[2, 2]], "type": "NominalConstant"},
+        {"spans": [[4, 4]], "type": "NominalConstant"},
+        {"spans": [[3, 3]], "type": "DeterminerConstant"},
+        {"spans": [[5, 5]], "type": "PunctuationalConstant"}
+      ],
+      "edges": [
+        {"start": 0, "end": 1, "label": "pred.arg.1"},
+        {"start": 0, "end": 4, "label": "made.up.edge"},
+        {"start": 5, "end": 99, "label": "as:punctuation"}
+      ]
+    }
+  }
+}

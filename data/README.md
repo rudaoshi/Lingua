@@ -20,8 +20,11 @@ At a high level, the serialized graph contains:
 
 Current split sizes in this repo:
 
-- train: 11,144
+- train: 11,129
 - dev: 1,000
 - test: 1,000
+
+The repaired train split removes 15 source-unrecoverable examples whose text
+was truncated, garbled, or semantically incomplete.
 
 The main training script expects `--data_dir` to point to this directory.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lingua Parse Validator"
+  short_description: "Validate Lingua graphs and propose corrected samples"
+  default_prompt: "Use $lingua-parse-validator to validate this Lingua annotation and return JSON with a corrected annotation for every fixable error."
