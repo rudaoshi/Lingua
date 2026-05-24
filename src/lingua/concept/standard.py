@@ -48,6 +48,7 @@ LinguaGraphEdges = {
     "discourse",
     "index",
     "modification",
+    "nonsense",
     "punctuation",
     "ref",
     "repeat",
@@ -55,5 +56,4 @@ LinguaGraphEdges = {
 }
 
 LinguaGraphEdges.update( "as:" + edge for edge in list(LinguaGraphEdges))    
-
 
