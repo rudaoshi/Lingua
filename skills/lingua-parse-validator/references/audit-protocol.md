@@ -14,6 +14,7 @@ Use this protocol for sampled or full-dataset Lingua annotation review.
 
 - Deeply inspect selected records, usually high-risk flags or user-selected lines.
 - Report exactly how many were inspected.
+- When records are selected by model confidence, report the confidence source, threshold or top-N rule, and separate model uncertainty from confirmed annotation errors.
 
 `full per-sample audit`:
 
@@ -70,6 +71,7 @@ The fixes file should contain the full audit records for problem lines, includin
    - inspect predicate-argument structure;
    - inspect modifier scope and hierarchy;
    - inspect references, function words, punctuation scope, coordination, and omissions;
+   - classify document fragments, table/header fields, titles, and proper-name fragments before requiring ordinary sentence PFA structure;
    - write verdict and errors;
    - for each fixable error record, write a complete `proposed_corrected_sample`.
 4. After the batch, summarize:

@@ -173,6 +173,219 @@ I want that.
 that.type -> NominalConstant
 ```
 
+## Correct: Pure Header/List Fragment Without Invented Predicate
+
+Sentence:
+
+```text
+LATEST PREVIOUS ACTUAL
+```
+
+Expected key structure:
+
+```text
+List/ListFunctor
+  func.arg -> LATEST
+  func.arg -> PREVIOUS
+  func.arg -> ACTUAL
+```
+
+Reason: this is a table/header fragment, not a sentence. It should not be forced into a factual predicate or copula structure.
+
+## Correct: Field / Schedule Fragment
+
+Sentence:
+
+```text
+Game 11: Tuesday, July 24 @ 7:30 PM vs. Utah STARZZ
+```
+
+Expected key decisions:
+
+```text
+Game 11 -> field/key or record identifier
+Tuesday, July 24 @ 7:30 PM -> date-time Expression
+vs. Utah STARZZ -> opponent/value Expression
+```
+
+Reason: this is a structured schedule record. Use `Attribute`/`Expression`/punctuation boundaries as needed; do not invent a normal event predicate unless the text actually states one.
+
+## Correct: Key-Value Metadata Fragment
+
+Sentence:
+
+```text
+Location: Houston, Texas USA
+```
+
+Expected key structure:
+
+```text
+Attribute/AttributePredicator
+  pred.arg.1 -> Location
+  pred.arg.2 -> Expression(Houston, ,, Texas, USA)
+  punctuation -> :
+```
+
+Reason: `Location` is a field label, not a factual predicate. The value is the location expression associated with that field.
+
+## Correct: Attendance Field Fragment
+
+Sentence:
+
+```text
+Attendance : 15,150
+```
+
+Expected key structure:
+
+```text
+Attribute/AttributePredicator
+  pred.arg.1 -> Attendance
+  pred.arg.2 -> Expression(15, ,, 150)
+  punctuation -> :
+```
+
+Reason: `Attendance` is the field label and `15,150` is its value. The value should not be the only attribute argument.
+
+## Correct: Standalone Date-Time Fragment
+
+Sentence:
+
+```text
+02/27/2001 08:23 AM
+```
+
+Expected key structure:
+
+```text
+Expression/ExpressionFunctor
+  func.arg -> 02/27/2001
+  func.arg -> 08:23
+  func.arg -> AM
+```
+
+Reason: the date, time, and meridiem are parts of one formatted expression. They should not be represented as a modifier chain.
+
+## Correct: Time Range Fragment
+
+Sentence:
+
+```text
+4:00 pm - 6:00 pm
+```
+
+Expected key structure:
+
+```text
+Expression/ExpressionFunctor
+  func.arg -> 4
+  func.arg -> :
+  func.arg -> 00
+  func.arg -> pm
+  func.arg -> -
+  func.arg -> 6
+  func.arg -> :
+  func.arg -> 00
+  func.arg -> pm
+```
+
+Reason: this is a formatted time range. The dash is a range boundary, not a factual predicate.
+
+## Correct: Natural Date Fragment
+
+Sentence:
+
+```text
+September 21, 2004
+```
+
+Expected key structure:
+
+```text
+Expression/ExpressionFunctor
+  func.arg -> September
+  func.arg -> 21
+  func.arg -> ,
+  func.arg -> 2004
+```
+
+Reason: this is a formatted date expression. The month, day, comma, and year are not semantic modifier layers.
+
+## Correct: Page Reference Fragment
+
+Sentence:
+
+```text
+p. 36
+```
+
+Expected key structure:
+
+```text
+Expression/ExpressionFunctor
+  func.arg -> p
+  func.arg -> .
+  func.arg -> 36
+```
+
+Reason: this is one page-reference expression, not a list of parallel fields.
+
+## Correct: Dateline Fragment
+
+Sentence:
+
+```text
+LOS ANGELES 1996-12-05
+```
+
+Expected key structure:
+
+```text
+List/ListFunctor
+  func.arg -> LOS ANGELES/Expression
+  func.arg -> 1996-12-05/Expression
+```
+
+Reason: this is a two-field source/date row. The location and date are sibling metadata fields, not a predicate-argument structure and not a modification relation.
+
+## Correct: Proper Name Fragment Without Copula
+
+Sentence:
+
+```text
+Marquis de Condorcet
+```
+
+Expected key structure:
+
+```text
+Expression/ExpressionFunctor
+  func.arg -> Marquis
+  func.arg -> de
+  func.arg -> Condorcet
+```
+
+Reason: the sample is a name, not a proposition. Do not add an implicit `is` or `be named` predicate.
+
+## Correct: Entity With Qualifier
+
+Sentence:
+
+```text
+Beetham Tower, Manchester
+```
+
+Expected key decision:
+
+```text
+Beetham Tower -> entity
+Manchester -> location/qualifier attribute or appositive-like qualifier
+comma -> local punctuation boundary
+```
+
+Reason: comma-separated entity + location is usually a qualified entity, not two unrelated list items.
+
 ## Correct: Do Not Promote Object To `arg1`
 
 Sentence:

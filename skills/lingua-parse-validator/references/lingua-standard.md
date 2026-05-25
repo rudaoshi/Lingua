@@ -615,6 +615,7 @@ Expression
 1. 如果组合关系不是修饰关系，不应误用 `Modification`。
 2. 表达式整体应可作为一个 descendant subgraph 被恢复。
 3. 数学、化学、范围、单位等符号应使用 `SymbolConstant` 或合适 constant type。
+4. 独立出现的日期、时间、日期时间、编号、比分、版本号等符号串，若内部只是格式组合而不是语义修饰，应优先作为一个 `Expression`；不得把日期修饰时间、AM/PM 修饰日期时间等格式部件误标为 `Modification` 或 `as:modification` 链。
 
 ---
 
@@ -965,6 +966,84 @@ Since/ModificationalFunctor
 | UI fragment 被强行解析为普通命题 | major |
 | metadata 仅作为 discourse metadata 挂接 | 正确 / minor |
 
+#### 6.15.1 Pure Structured Fragments
+
+有些样本本身不是正文句子，而是完整样本仅由 header、表格列名、比分、赛程、地址、联系方式、文件名、页面引用、版权行、decorative separator、列表项或 UI 控件文本构成，例如：
+
+```text
+LATEST PREVIOUS ACTUAL
+W L T PF PA
+p. 36
+Preseason Game B: Thursday, May 24 @ 7:30 PM vs. Detroit SHOCK
+Chicago, IL 60622
+---->===}*{===<----
+```
+
+这类样本应先判定为 structured fragment，而不是套用普通句子的主事实谓词要求。纯 fragment 仍必须满足 token coverage、legal labels、single-root DAG 和 recoverability，但不要求虚构 `FactualPredicator`、主语、宾语或完整命题。
+
+表示规则：
+
+1. 平行字段、列名、菜单项、标题列表可用 `ListFunctor` / `List` 挂接每个项目；项目之间没有事实性 predicate-argument 关系时，不得强行建立谓词。
+2. 页码、编号、比分、战绩、日期时间、时间范围、电话号码、地址、文件名、百分比、货币数值、模型号等常规符号串可用 `ExpressionFunctor` / `Expression` 打包为一个可恢复 expression unit。
+3. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录可用 `AttributePredicator` 或 `Attribute` 表示字段名与字段值；若外部实体缺失，不得虚构实体，可用当前 record 或可恢复 value 作为局部 host，必要时用 `Missing` 并降权。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`。
+4. 冒号、破折号、逗号、斜杠、括号、句点若只是 fragment 内部 boundary 或 close marker，应作为局部 punctuation / expression boundary，不得成为事实谓词。
+5. 纯装饰符号、乱码、截断严重、问候/签名、媒体边界、版权声明等低信息片段仍有片段语义，应优先保留为低语义信息 fragment；除非上游数据集有明确的非语义清洗策略，不应仅因信息量低而过滤。
+6. 对问候、签名、感谢、残句等仍能看出普通语法或省略句结构的片段，应先按省略结构解析，必要时用 `Missing` 补出可由结构支持的省略论元；不得因为它是邮件结束语、寒暄语或低信息文本就直接平铺为 `Expression`。
+7. `Expression`、`List`、`Attribute`、局部 punctuation root 或 `nonsense` 只应作为 fallback：当片段内部没有可负责任恢复的谓词、修饰、呼语、介词短语、字段、并列或省略关系时，才把它作为低语义信息 fragment 打包。不得把 `nonsense` 用于可按上述规则解释的正常字段或表达式。
+8. 纯 fragment 的 root 可以是普通语法结构、省略结构、`ListFunctor`、`ExpressionFunctor`、`AttributePredicator`、对应 aux node，或能关闭该 fragment 的 `PunctuationalConstant`；只要 `DESC(root)` 恢复完整 fragment 即可。
+9. 纯日期、时间、日期时间和时间范围片段，如 `02/27/2001 08:23 AM`、`Feb 2005`、`September 21, 2004`、`Tuesday, March 20th.`、`September 20, 1888?`、`4:00 pm - 6:00 pm`，应表示为一个 `Expression`，其子项可按 date / time / meridiem / range boundary 或更细粒度符号部件恢复；不要把 date-time 内部格式关系标成普通修饰，也不要把时间范围分隔符误标为事实谓词。
+10. 新闻 dateline 或来源行，如 `DUBLIN 1996-08-27`、`LOS ANGELES 1996-12-05`，应表示为 `List(location-expression, date-expression)` 或等价可恢复结构：location 和 date 是同一元数据行的两个字段，不是彼此的修饰体，也不是正文事实谓词的论元。
+11. 纯页码/页引用片段，如 `p. 36`、`pp. 12-15`，应作为 page-reference `Expression` 或等价可恢复表达式；不要把 `p.` 和页码误当成并列 `List` 项。
+
+判错：
+
+| 情况 | 严重程度 |
+|---|---|
+| 纯 fragment 没有主事实谓词，但用 `List` / `Expression` / `Attribute` 可恢复 | 正确 |
+| 为表格列名、页码、比分、文件名虚构普通事实谓词 | major |
+| 把 field label 当作 value 的普通修饰或实体组成部分 | major |
+| 可解析字段记录未区分 key 与 value | minor / major |
+| 纯 key-value 字段记录被标成普通 `FactualPredicator` 结构 | minor / major |
+| 用 `nonsense` 代替可解析的 expression、list 或 attribute | minor / major |
+| 纯日期时间或时间范围被标成 `Modification` / `as:modification` 链或普通事实谓词 | minor / major |
+| dateline 中 location 与 date 被误标为修饰、事实论元或互相省略 | minor / major |
+| 页引用被误标为并列 `List` 或普通命题 | minor / major |
+| 纯装饰、乱码、截断、问候、签名、媒体边界、版权声明被保留为低语义 fragment | 正确 |
+| 可按省略句解析的问候/签名/感谢/残句被无差别平铺为 `Expression` | minor / major |
+
+#### 6.15.2 Proper Names, Titles, and Nominal Fragments
+
+低置信样本中还常见多词专名、地名、作品名、标题、名单项、职位/角色短语和括号消歧义，例如：
+
+```text
+Donna Sells
+Marquis de Condorcet
+Beetham Tower, Manchester
+Cedar Hill School (disambiguation)
+Great Sandwiches, Great Prices
+Koichi Morita (army officer)
+```
+
+这类片段缺少显式谓词时，不应为了满足普通句子模板而补出 copula、`is`、`be named` 或其他未出现的事实谓词。它们应作为 entity / title / nominal expression 处理。
+
+表示规则：
+
+1. 多词专名若内部组合是 lexicalized name，推荐用 `ExpressionFunctor` / `Expression` 或一个 head `NominalConstant` 加可恢复的 name-part 结构表示；不得把名和姓误作 predicate-argument。
+2. 含有职称、角色、括号说明、地理限定或消歧义说明时，可用 `Attribute`、`Apposition`、`as:modification` 或 discourse metadata 表示其对核心实体的限定；选择取决于该说明是身份属性、同位描述、地理限定还是数据源消歧义。
+3. 逗号连接的地名/机构名如 `Jordan, New York`、`Beetham Tower, Manchester` 通常不是并列列表，而是 entity + location / qualifier；不能简单当作两个无关 list items，除非上下文确实表达列表。
+4. 标题式短语如 `PHOTOS DONE WELL`、`Great Sandwiches, Great Prices` 可作为 title/list/expression；只有当上下文明确表达命题时，才解析为普通事实句。
+5. 如果专名或标题内部边界无法可靠判断，只要 token coverage 完整、root 可恢复整个名词性片段、没有添加未出现事实，可判为 acceptable variant 或 minor，不应直接判 major。
+
+判错：
+
+| 情况 | 严重程度 |
+|---|---|
+| 多词专名作为 `Expression` / entity fragment 可恢复 | 正确 |
+| 为专名/标题虚构普通事实谓词 | major |
+| 把地理限定、括号消歧义、角色说明误作核心事实论元 | major |
+| 将 entity + qualifier 误作无关平行列表并丢失限定关系 | major |
+| 专名内部结构风格不同但整体 entity 可恢复 | minor / acceptable variant |
+
 ---
 
 ### 6.16 Punctuation
@@ -1216,6 +1295,8 @@ LLM 评估器应输出 JSON，便于自动处理。
 | `LogicalRelation` | 条件、因果、时间、让步等关系错误。 |
 | `Coordination` | 并列、parataxis、list 错误。 |
 | `Discourse` | 话语标记、插入语、呼语错误。 |
+| `DocumentFragment` | header、field label、表格、UI、联系方式、文件名等 structured fragment 错误。 |
+| `ProperNameFragment` | 专名、标题、名词性 fragment 被误解析为普通命题或丢失限定关系。 |
 | `SemanticFidelity` | 添加、遗漏、误解原句语义。 |
 | `OverFlattening` | OIA 式过度扁平化，未体现 Lingua 层级。 |
 | `Redundancy` | 重复节点、重复边、无意义结构。 |
@@ -1247,7 +1328,8 @@ Use the following principles:
 4. The graph must faithfully represent the sentence without adding unsupported information or omitting core information.
 5. Predicate-Function-Argument structure must be correct: factual predicates, logical predicates, functions, and their arguments must be represented with correct edge labels.
 6. Lingua is more hierarchical than OIA. Do not accept excessive OIA-style flattening when the sentence contains complex entity-internal structure, nested modification, relative clauses, attributes, expressions, or logical relations.
-7. Accept harmless variants, including:
+7. If the input is a document fragment, table/header field, UI fragment, title, or pure proper-name fragment, evaluate it under the fragment rules before requiring a main factual predicate.
+8. Accept harmless variants, including:
    - var as an alias of variable;
    - as: prefix for reversed edges when needed for single-root DAG;
    - simplified modification edges when there is no ambiguity;
@@ -1296,8 +1378,9 @@ Use the Lingua annotation evaluation standard. Check:
 4. predicate-function-argument correctness
 5. entity and modification hierarchy
 6. expression, attribute, apposition, reference, logical relation, coordination/list structures
-7. semantic faithfulness
-8. acceptable variants
+7. document fragments, field labels, titles, proper names, and other non-sentential fragments
+8. semantic faithfulness
+9. acceptable variants
 
 Return the evaluation JSON only.
 ```
@@ -1316,7 +1399,7 @@ Return the evaluation JSON only.
 [ ] 边标签合法
 [ ] as: 前缀语义方向可恢复
 [ ] 节点引用按 SELF/DESC 语义解释，wrapper 的 DESC 可恢复目标 analytic unit
-[ ] 主事实存在
+[ ] 主事实存在，或样本已按合法 structured/name/title fragment 处理
 [ ] 核心论元完整
 [ ] 每个 predicate 的 pred.arg.1 已补足；无 arg1 的情况有文本或结构依据
 [ ] 论元编号基本正确
@@ -1332,6 +1415,8 @@ Return the evaluation JSON only.
 [ ] Expression 未误标为 Modification
 [ ] 逻辑连接词未遗漏
 [ ] 并列/列表项未遗漏
+[ ] 纯 header、field label、table row、UI fragment、文件名、地址、联系方式等没有被强行解析为普通命题
+[ ] 专名、标题、名词性 fragment 没有被虚构 copula 或普通事实谓词
 [ ] 没有添加原句没有的信息
 [ ] 没有遗漏关键语义
 ```
@@ -1382,7 +1467,7 @@ Return the evaluation JSON only.
 3. 所有 lexical tokens 必须被 exactly once 覆盖。
 4. 所有 edge 的 source 和 target 必须存在。
 5. 所有 node type 和 edge label 必须合法或可规范化。
-6. 主事实谓词必须存在。
+6. 主事实谓词必须存在；但纯 structured fragment、标题、专名、field label、UI fragment 等无事实谓词样本按 fragment 规则处理，不得虚构事实谓词。
 7. 核心 predicate arguments 不得缺失；predicate node 原则上必须补足 `pred.arg.1`，除非原句确实无对应成分、该谓词语义上不需要 `arg1`，或文本省略且无法由结构恢复。
 8. 相对从句必须有内部谓词结构；显式 wh-word / `that` / 指代词存在时必须有 `ref/as:ref` 或等价 `Ref` 节点结构，零关系从句不得凭空添加 `Ref`。
 9. 属性结构必须明确区分 entity 与 value。
@@ -1392,6 +1477,8 @@ Return the evaluation JSON only.
 13. 评估论元、修饰和 wrapper 结构时必须依据 `DESC(v)` 的可恢复性；不得仅因 `SELF(v)` 是标点、修饰词、`Modification`、`Ref` 或其他 wrapper 就判错。
 14. 多重修饰的链式嵌套必须符合语义亲疏和 scope 顺序；`DESC(v)` 可恢复不能豁免近层/远层修饰内外顺序错误。
 15. header、speaker label、field label、key-value label、UI fragment 等文档元数据片段不得进入正文核心 PFA；应作为 discourse metadata 或局部 boundary 保留。
+16. 纯 structured fragment 可以用 `List`、`Expression`、`Attribute` 等结构作为 root，不要求普通句子的 `FactualPredicator`。
+17. 多词专名、标题和名词性 fragment 不得被强行补成 copula/事实命题；其内部结构只需能恢复 entity/title 及必要限定关系。
 
 以下规则建议作为 soft constraints：
 

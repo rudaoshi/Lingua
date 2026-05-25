@@ -17,6 +17,10 @@ These are calibrated lessons from aligning the Lingua standard with existing JSO
 - Descendant subgraph semantics are central: judge wrappers by `DESC(v)` recoverability, but still enforce modifier proximity and scope order.
 - Explicit wh-words, relative `that`, or referring expressions require `Ref` or `ref/as:ref`; zero relatives must not invent `Ref`.
 - Punctuation that clearly closes a local structure should root that local closed structure.
+- Pure structured fragments such as table headers, scores, page refs, schedule rows, addresses, filenames, and UI labels are not ordinary sentences; they may be rooted as `List`, `Expression`, `Attribute`, or low-information fragment structures without an invented `FactualPredicator`.
+- Greetings, signoffs, copyright notices, media boundary markers, decorative separators, clipped text, and malformed residues still have fragment semantics. Do not filter them merely for low semantic density; preserve them as low-information fragments unless a separate dataset-cleaning policy says otherwise.
+- Low-information does not imply `Expression` flattening. For greetings, signoffs, thanks, clipped clauses, and malformed residues, first try an ordinary or elliptical parse with justified `Missing`; use `Expression` only when no more specific syntactic or semantic relation can be recovered.
+- Proper names, titles, and nominal fragments without explicit predicates should not be forced into copula/factual-predicate graphs; preserve the entity/title expression and any qualifier relation.
 
 ## Repaired Pattern Library
 
@@ -72,3 +76,15 @@ In one 100-sample pass:
 - 21 were deeply expanded because previous repair samples were also checked.
 
 The honest description is: `100 screened + high-risk/selected samples deeply reviewed`, not `100 fully audited`.
+
+## Confidence Screening Lesson
+
+The lowest-confidence 100 samples from the 3-fold wordgraph run were dominated by non-sentential or low-distribution forms rather than obvious core Lingua contradictions:
+
+- structured fragments / table fields: 33;
+- proper-name, title, or nominal fragments: 26;
+- noise, greetings, media markers, or clipped text: 17;
+- complete complex sentences needing semantic review: 13;
+- questions, ellipsis, or whether-like risk cases: 11.
+
+The dominant loss component was `rel` for 79/100 records. Treat this as evidence that edge-relation policy for fragments and name/title structures needs standardization; do not treat low confidence alone as proof that the annotation is wrong.

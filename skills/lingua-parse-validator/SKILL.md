@@ -46,6 +46,8 @@ Procedure:
    - edge endpoints exist;
    - graph is a single-root reachable DAG unless the standard explicitly allows a fragment.
 4. Check linguistic validity:
+   - first decide whether the input is a normal sentence, a document/structured fragment, a title, or a pure proper-name/nominal fragment;
+   - do not require a main factual predicate for pure fragments that are correctly represented as `List`, `Expression`, `Attribute`, or entity/title structures;
    - predicate-argument structure is semantically correct;
    - every predicate has recoverable `pred.arg.1` unless the sentence truly lacks one;
    - `pred.arg.4` is not used for ordinary purpose, reason, time, manner, or condition adjuncts;
@@ -148,6 +150,9 @@ Principle: programmatic checks catch form errors; the model still performs lingu
 - Prefer exact node, edge, line, or token locations over vague comments.
 - Do not invent labels outside the standard.
 - Treat `nonsense` as legal but low-information.
+- Treat low model confidence as a review-priority signal, not proof of annotation error.
+- For header/table/field/UI fragments, evaluate fragment policy before applying ordinary sentence PFA expectations.
+- For proper names, titles, and nominal fragments, do not invent copulas or factual predicates merely to create a sentence-like graph.
 - Treat `but` as `LogicalPredicator`.
 - Treat `if` as `LogicalPredicator` for conditional "if", and `GeneralFunctor` for whether-clauses.
 - Treat `that` by function: nominal-clause marker as `GeneralFunctor`, demonstrative entity as `NominalConstant`, determiner as `DeterminerConstant`, relative marker as `GeneralFunctor`.

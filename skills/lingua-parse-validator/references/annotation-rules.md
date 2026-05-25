@@ -162,6 +162,36 @@ R-SEM-02: Do not omit core semantic content.
 
 R-SEM-03: Treat `nonsense` as legal but low-information, not as a high-confidence semantic relation.
 
+R-FRAG-01: Before requiring a main factual predicate, decide whether the whole sample or a prefix/suffix is a document fragment, table/header field, UI fragment, title, or proper-name fragment.
+
+R-FRAG-02: Pure structured fragments still need token coverage, legal labels, one recoverable root, and a DAG, but they do not need an invented `FactualPredicator`, subject, object, or ordinary proposition.
+
+R-FRAG-03: Parallel headers, table columns, menu items, and list-like labels should use `ListFunctor`/`List` or equivalent list structure; do not invent predicate-argument relations between parallel fields.
+
+R-FRAG-04: Page refs, scores, dates, times, time ranges, phone numbers, addresses, filenames, percentages, money, model codes, and similar symbol strings should be recoverable as `ExpressionFunctor`/`Expression` units when they are not ordinary sentences.
+
+R-FRAG-05: Field or key-value records should distinguish key/field label from value, usually with `AttributePredicator`/`Attribute` or equivalent low-information metadata structure. Do not represent a non-predicative field label such as `Email`, `Location`, `Attendance`, `Pin #`, `Job ID`, `DATE`, `Game N`, or `Preseason Game N` as a normal `FactualPredicator` merely to connect it to the value.
+
+R-FRAG-06: Header, speaker label, field label, key-value label, or UI metadata must not enter the core predicate-argument frame of nearby body text unless the text explicitly makes it part of the fact.
+
+R-FRAG-07: Use `nonsense` only for truly uninterpretable retained fragments, not as a substitute for recoverable `List`, `Expression`, `Attribute`, punctuation, or discourse structure.
+
+R-FRAG-08: Low-information fragments such as greetings, signoffs, copyright notices, media boundary markers, decorative separators, clipped text, and malformed residues still have fragment semantics. Preserve them as low-information fragments unless an external dataset-cleaning policy explicitly requires removal.
+
+R-FRAG-09: Do not flatten greetings, signoffs, thanks, clipped clauses, or malformed residues into `Expression` merely because they are low-information. If ordinary syntax or ellipsis is recoverable, parse that structure first and use `Missing` only for structurally justified omissions.
+
+R-FRAG-10: Standalone date/time/date-time/time-range fragments such as `02/27/2001 08:23 AM`, `Feb 2005`, `September 21, 2004`, `Tuesday, March 20th.`, `September 20, 1888?`, or `4:00 pm - 6:00 pm` should be represented as one recoverable `Expression` unit, with date, time, meridiem, punctuation, timezone, and range boundary as expression parts when useful. Do not model internal date-time formatting as `Modification`, `as:modification`, or a normal `FactualPredicator`.
+
+R-FRAG-11: Dateline/source rows such as `DUBLIN 1996-08-27` or `LOS ANGELES 1996-12-05` should be represented as `List(location-expression, date-expression)` or an equivalent recoverable two-field structure. The location and date are sibling metadata fields, not modifier/head, predicate/argument, or omitted-sentence relations.
+
+R-FRAG-12: Standalone page references such as `p. 36` or `pp. 12-15` should be represented as a recoverable page-reference `Expression`, not as a parallel `List` and not as a normal predicate.
+
+R-NAME-01: Multi-token proper names, titles, and nominal fragments without explicit predicates should be represented as entity/title/expression fragments; do not invent copulas or factual predicates.
+
+R-NAME-02: Role labels, parenthetical disambiguators, geographic qualifiers, and title qualifiers should be represented as attribute, apposition, modification, or discourse metadata according to their semantic function.
+
+R-NAME-03: Entity + qualifier strings such as `Jordan, New York` or `Beetham Tower, Manchester` are usually not flat lists; preserve the qualifier relation when recoverable.
+
 ## Audit Process Rules
 
 R-AUDIT-01: Distinguish `batch screening`, `targeted review`, and `full per-sample audit` in all reports.
@@ -173,3 +203,5 @@ R-AUDIT-03: For long audits, produce resumable JSONL artifacts with `line_number
 R-AUDIT-04: Do not claim that a dataset was fully audited if only high-risk samples were expanded and semantically reviewed.
 
 R-AUDIT-05: For repairs, record the original error and minimal change. Do not silently rewrite a graph.
+
+R-AUDIT-06: Low model confidence is a review-priority signal, not proof of a standard violation. Separate model uncertainty, standard coverage gaps, data noise, and confirmed annotation errors in reports.

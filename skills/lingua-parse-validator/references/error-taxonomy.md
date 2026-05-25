@@ -40,6 +40,10 @@ Use these categories in `errors[].error_type`.
 
 `EXPRESSION_ERROR`: expression, range, formula, date, score, or symbol sequence is modeled as the wrong structure.
 
+`DOCUMENT_FRAGMENT_ERROR`: header, field label, table row, UI fragment, metadata line, filename, address, contact info, or other structured fragment is forced into an ordinary sentence analysis, loses key/value structure, or contaminates nearby body-text PFA.
+
+`PROPER_NAME_FRAGMENT_ERROR`: proper name, title, geographic name, role label, parenthetical disambiguator, or nominal fragment is misrepresented as an ordinary fact, loses necessary qualifier structure, or is flattened into unrelated list items.
+
 `ATTRIBUTE_APPOSITION_ERROR`: attribute or apposition relation is reversed or confused with ordinary modification.
 
 `OMISSION_ERROR`: omitted or implicit element is missing, unjustified, or represented by the wrong explicit node.
@@ -66,6 +70,8 @@ Use these categories in `errors[].error_type`.
 - Reassigning an object to `pred.arg.1` merely to satisfy the `arg1` preference.
 - Incorrect or invented reference.
 - `pred.arg.4` used for an ordinary adjunct.
+- Header, field, UI, or metadata fragment is treated as a core fact argument.
+- Proper name/title fragment is given an invented factual predicate or loses an explicit qualifier.
 
 `critical`:
 
@@ -73,6 +79,7 @@ Use these categories in `errors[].error_type`.
 - Edge endpoints or labels are illegal.
 - Main fact is absent or seriously misleading.
 - Annotation cannot be reliably interpreted as Lingua.
+- A retained fragment has no recoverable root, loses token coverage, or is forced into a misleading ordinary sentence structure. Low-information fragments are not errors merely because their semantic content is sparse.
 
 Verdict mapping:
 
