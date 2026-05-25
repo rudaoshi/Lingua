@@ -1,0 +1,196 @@
+priority	sample_id	review_mode	decision	reason	sentence
+P0	train:650	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Come on down .
+P0	train:7668	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	I'll never go back there again
+P0	train:7828	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	not going to do chemotherapy again .
+P0	train:1143	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	I finally got it to blackline correctly.
+P0	train:5295	copula_attribute_or_state	fixed	applied explicit manual repair	i am out of town.
+P0	train:1157	fragment_or_name_false_positive	leave	queue false positive; sample is a fragment/name, not a normal clause	Sítio do Quinto
+P0	train:67	fragment_or_name_false_positive	leave	queue false positive; sample is a fragment/name, not a normal clause	At seven forty
+P0	train:9496	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	See link below.
+P0	test:740	copula_attribute_or_state	fixed	applied explicit manual repair	The insurgency is in a no - win position .
+P0	train:1847	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	It said it was in January but still!!!!
+P0	test:801	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	I even emailed Mackinaw Tourist and nothing.
+P0	dev:456	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	i ' m wolf blitzer reporting .
+P0	train:4573	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	Yes my G 1 screen is back working.
+P0	train:8738	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	I stopped in today @ Yards Brewery.
+P0	train:5231	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	Individuals can always have their hands slapped .
+P0	test:821	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	This is pretty easy math for me.
+P0	train:5011	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	Chichester is new our master . . .
+P0	train:3643	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	It would have been more than one could bear!
+P0	dev:152	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	They also removed Coelociontidae from Orthalicoidea .
+P0	dev:833	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	So here we are in Manson.
+P0	train:4054	fragment_or_name_false_positive	leave	queue false positive; sample is a fragment/name, not a normal clause	Emnid May 26 40.0 31.0 6.0 13.0 6.0
+P0	train:3910	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Asked for bar - b - que sauce never got it.
+P0	train:7711	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	the food is mediocre at best.
+P0	train:9312	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Watch out the poles are coming ..... my little butterfly
+P0	train:7544	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	My mane is Visit Phunnarungsi.
+P0	test:246	copula_attribute_or_state	fixed	applied explicit manual repair	the wings were off of it .
+P0	train:4272	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	Indoor cats that are well cared for typically live 11 - 15 years.
+P0	train:8246	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	Broad, I say, is 14th street and I am 3 blocks west of broad and one south of walnut.
+P0	train:4299	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	Six month rate 10.5 pct 10.75
+P0	train:3164	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	She is a pure b****!!!
+P0	train:1992	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Bearded dragon question ...?
+P0	train:2250	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	""" I hate you f... ing lot , yet you 're always asking me too many things ."
+P0	test:141	copula_attribute_or_state	fixed	applied explicit manual repair	My brother is in Kuwait .
+P0	train:8460	copula_attribute_or_state	fixed	applied explicit manual repair	The people are against it .
+P0	train:10290	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	Rihanna also rejected the tune .
+P0	train:528	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	He also founded JMI Equity .
+P0	train:10486	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	already have plans on thursday.
+P0	train:8018	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	** Edit: Living on campus at Clarkson University, I have had food delivered before.
+P0	train:3327	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	The weak still go hungry .
+P0	train:8884	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Are you really?
+P0	test:996	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	I believe the left - behind children group is definitely more than 10 or 20 million .
+P0	train:10987	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	someplace that is like $30 an entree.
+P0	test:991	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	We ' ve got to dive for vehicles , we think .
+P0	train:4087	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	Both stories were later collected in the 2005 Salem 's Lot Illustrated Edition .
+P0	train:3369	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Where does our 50% (the 1.65 million dollars) show up?
+P0	train:9294	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Call me to discuss.
+P0	train:8241	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	Yes bus service is available.
+P0	train:8635	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	Anyway Advice for travelling.
+P0	train:4537	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	They met lighter than expected resistance .
+P0	test:537	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	By 11.25 a.m. ( 0025 GMT ) , Niugini Mining shares were at A$ 3.65 , up 28 cents on turnover of 108,288 shares .
+P0	train:4602	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Imagine the tension melting away as you continue breathing rhythmically and naturally.
+P0	train:10321	preposition_particle_or_infinitive	fixed	applied explicit manual repair	Many peasants often come here to learn techniques and purchase quality varieties .
+P0	test:2	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	Bryan, you're in, right?
+P0	train:6059	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Can you please give me a call to discuss trademarking?
+P0	train:1868	fragment_or_name_false_positive	leave	queue false positive; sample is a fragment/name, not a normal clause	Associated British Picture Corporation
+P0	train:4509	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	Dr Joseph retired.
+P0	train:3933	discourse_coordination_punctuation	fixed	applied explicit manual repair	I WAS ALSO THERE OF JULY 4TH 2008, WHEN MY DAUGHTER S BUFFALO WINGS CAME OUT WITH A FLY ON IT.
+P0	train:1581	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	Survivors are being found all the time, including two children who lost their parents.
+P0	dev:349	fragment_or_name_false_positive	leave	queue false positive; sample is a fragment/name, not a normal clause	Roles Synopsis Setting Mid 18th century .
+P0	train:23	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	Gates worked 30% of the time at best.
+P0	train:9003	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	Ijaz Ahmed c Irani b Mullally 48
+P0	train:4431	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	this man , abu abbas has lived an i tin rant life , he ' s been in tunas .
+P0	train:8487	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	Maybe make Japan the last place .
+P0	train:7341	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	These are not isolated events . . . This is a revolution from within .
+P0	train:9079	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	it is certainly behind much of the action in Iraq ,
+P0	train:9189	discourse_coordination_punctuation	leave	discourse/coordination/punctuation graph inspected; no safe correction needed	Ehrenfels Castle , Rüdesheim am Rhein
+P0	train:6619	fragment_or_name_false_positive	leave	queue false positive; sample is a fragment/name, not a normal clause	Cimetière parisien de Pantin
+P0	train:4311	discourse_coordination_punctuation	fixed	applied explicit manual repair	We have an update tonight on this , the volcano in Mexico , they call El Popo .
+P0	train:7015	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	This may be of interest to you I have a free online dating service.
+P0	test:871	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	408 - Number of species that could be extinct by 2050 if the global - warming trend continues.
+P0	train:9596	simple_predicate_argument	leave	predicate-argument or wrapper target is DESC-recoverable	The golden rays feel soft and soothing.
+P0	train:4333	ellipsis_imperative_question	leave	predicate-argument or wrapper target is DESC-recoverable	Not what i expected!
+P0	train:9305	preposition_particle_or_infinitive	leave	predicate-argument or wrapper target is DESC-recoverable	The data will be transmitted back to Earth .
+P0	train:3208	copula_attribute_or_state	leave	copula/classification/state graph inspected; no remaining standard violation found	That temper is only one problem.
+P1	train:954	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	W L T PF PA
+P1	train:4203	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Karen . x54667
+P1	train:2953	opaque_identifier_or_attachment	leave	fragment/name/list policy case; low confidence is model coverage	Kyle.Jones@ra
+P1	dev:9	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	<<MEH-risk Oct 20>>
+P1	train:4392	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	i.e.
+P1	train:2679	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	- Primary Rights 4-12 .doc
+P1	train:2371	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	- Filet - O - Fish
+P1	train:7705	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	My 2 c. ....
+P1	dev:540	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Đắk Lắk Province
+P1	train:2502	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	- Juggernaut>
+P1	train:8908	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	Why not look it up!
+P1	train:6406	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	[MfM Act 3, Sc. 2]}
+P1	train:10067	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	the number: 1-800-991-9019
+P1	train:687	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	the passcode: 6871082#
+P1	train:5687	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Sils im Engadin / Segl
+P1	train:8534	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Tuesday, March 20th.
+P1	train:2919	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Blaze Ya Dead Homie - ( 9 )
+P1	train:7886	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Russ 3-5297
+P1	train:5505	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Lorie Leigh 46093
+P1	train:4916	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	SKS Tana 70 03/09 Mideast / Japan W145 CNR .
+P1	train:7058	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Barnsley 3 Huddersfield 1
+P1	train:10095	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Social ( Coronel Fabriciano )
+P1	train:9414	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	86M - Enron Net Works LLC
+P1	train:5360	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Vaz / Obervaz
+P1	train:8589	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Volendam 0 .
+P1	train:4964	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	June 14 Reception
+P1	train:861	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	1381 W. Hubbard
+P1	train:2564	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	de Nooijer 80th ) .
+P1	test:66	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Paris ( Chatenay Malabry ) .
+P1	train:5126	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Tana Cashion
+P1	train:9722	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Khymberly Booth
+P1	test:207	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	thanks d
+P1	train:10314	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	miles ?
+P1	train:10005	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	And ?
+P1	train:2971	opaque_identifier_or_attachment	leave	fragment/name/list policy case; low confidence is model coverage	---- cgy
+P1	train:1950	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Donna Sells
+P1	train:9845	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	theoretically ?
+P1	train:9728	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	select PROGRAMS
+P1	train:862	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Wafa Amr
+P1	train:6957	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	The Clay Cole Show
+P1	train:5965	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	CHERNOBYL ACCIDENT: TEN YEARS ON
+P1	train:1458	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Location: Houston, Texas USA
+P1	train:10663	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Place: University of Pennsylvania
+P1	test:90	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Attendancce 35,000 .
+P1	train:5836	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	LATEST PREVIOUS ACTUAL
+P1	dev:270	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Marquis de Condorcet
+P1	train:68	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	** Disclaimer **
+P1	train:5901	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	( END VIDEOTAPE )
+P1	train:4434	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	But institutionally?
+P1	dev:884	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Yes, Manson.
+P1	train:3931	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Ham s on Friendly...RIP
+P1	train:639	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Right , right , yes .
+P1	test:286	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Blogging Katrina
+P1	train:680	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	GOVT.BUDGET ( bln pts ) Govt.Fcast 96
+P1	train:1933	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Duke University Press , January 1 , 2009 .
+P1	train:4049	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	James Winslow ( 1'26.011 )
+P1	train:11129	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	-- Paris Newsroom +33 1 4221 5452
+P1	train:1751	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	-- Paris newsroom +33 1 4221 5452
+P1	dev:342	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	There are other known myosin light-chain kinase enzymes .
+P1	test:939	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	10. Corser 38:42.015
+P1	train:4496	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Sales 12.50 13.00 11.27
+P1	train:2435	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	1689 - EPI - EBS Ventures, LLC
+P1	train:2972	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	"Email: "" Ryan Reynolds "" <rreynol...@cogeco.ca>"
+P1	train:4030	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	St. Louis 21,346 0
+P1	train:10141	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Friday, June 04, 2004
+P1	train:544	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	EDIT: now i'm curious ...
+P1	train:852	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Vampire Weekend ( 22 , 52 )
+P1	train:9929	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	It's dark, dingy & dirty.
+P1	train:9510	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	For about forty - five years .
+P1	dev:165	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Argentinian foods of course, LMAO.
+P1	train:9458	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	List of Hot 100 number-one singles of 1992 ( U.S . )
+P1	train:7718	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Wk to Aug 28 Chg on wk Chg on yr
+P1	test:769	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Elect Res April 20 43.0 32.0 6.0 12.0 4.0
+P1	train:9291	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Fun picture websites (:?
+P1	train:10563	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	WWW - Wonderful Wild Wildernest inn
+P1	train:8158	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	PONCHATOULA, La. --
+P1	train:8772	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	UNDERLYING GOVT BOND 7.0 PCT SEPT 2001
+P1	train:9470	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Albert Prosa ( 6 )
+P1	train:8131	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Paul Noce ( 1986 )
+P1	train:3408	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Let It Shine ( Linda Hargrove song )
+P1	train:10807	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	W D L PCT GB
+P1	train:3864	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	C. Hooper run out 7
+P1	train:3824	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Earl Hilliard ( D )
+P1	train:10428	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Chicago, IL 60622
+P1	dev:855	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Scott Hend ( 4 )
+P1	train:7	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Gardiner , New York
+P1	train:1528	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Job ID: J12746KM
+P1	train:2690	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	GCP procedure is to create Counterparty names that reflect either the Tradename / Division name or Parent Name--not reflect both simultaneously.
+P1	train:5136	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	List of number-one R & B albums of 1999 ( U.S . )
+P1	train:7073	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Competitive tournaments All-Time Record Against FIFA Recognized Nations
+P1	train:10703	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	25px Illinois Route 96
+P1	train:8995	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	St Chad 's College , Durham
+P1	train:993	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Yamakage Hiroaki ( Japan ) 37.93 ; 7 .
+P1	train:7572	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Pěnčín ( Jablonec nad Nisou District )
+P1	train:2399	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	St. Mary 's Cathedral Basilica , Galveston
+P1	train:9444	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	ATLANTA 81 49 .623 -
+P1	dev:568	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	CHICAGO 17 1 .944 -
+P1	train:4972	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	SAN DIEGO AT MONTREAL
+P1	train:4310	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	St James ' Park
+P1	train:4350	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	NY RANGERS AT TORONTO
+P1	train:5575	table_or_header_list	leave	fragment/name/list policy case; low confidence is model coverage	ST LOUIS AT CHICAGO
+P1	train:4774	nominal_fragment_or_expression	leave	ordinary-clause graph was inspected and is DESC-recoverable	She seems to lope one stride and trot the next and repeat ...
+P1	train:6936	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Paul Phillips ( songwriter / singer )
+P1	train:3499	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Pin #for Paul Kaufman ONLY: 362416
+P1	train:74	nominal_fragment_or_expression	leave	ordinary-clause graph was inspected and is DESC-recoverable	As the year progresses, the more impressive your ideas and works become.
+P1	train:9363	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Fernando Scherer ( 49.79 ) Gustavo Borges ( 48.61 ) Carlos Jayme ( 49.88 ) Edvaldo Silva Filho ( 49.12 )
+P1	train:2768	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	In California . . .
+P1	train:8048	nominal_fragment_or_expression	fixed	applied explicit manual repair	Sure , let 's invade Iran .
+P1	train:192	short_discourse_or_ellipsis	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Pam the Pom
+P1	train:7108	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Danny (Australia)
+P1	train:1438	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Emilia-Romagna , Friuli-Venezia Giulia , Trentino-Alto Adige / Südtirol , Veneto
+P1	train:841	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Mika Singh , Hard Kaur
+P1	train:3346	proper_name_title_or_signature	leave	fragment/name/list policy case; low confidence is model coverage	Bugs Bunny , Yosemite Sam
+P1	train:7688	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	Uzbekistan ( 1998 , 1999 )
+P1	train:8375	nominal_fragment_or_expression	leave	ordinary-clause graph was inspected and is DESC-recoverable	It lies approximately north-east of Koczała , north-west of Człuchów , and south-west of the regional capital Gdańsk .
+P1	train:7978	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	To Whom It May Concern:
+P1	train:1366	ordinary_sentence_misclassified	leave	ordinary sentence/ellipsis inspected; current graph is acceptable or source is too noisy	In the Haiyan dialect , first - and third-person pronouns are pluralized with , but the second-person plural is a separate root .
+P1	dev:279	field_attribute_record	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	From: saem_aero - ga on 26 Oct 2004 18:11 PDT
+P1	train:9314	nominal_fragment_or_expression	leave	ordinary-clause graph was inspected and is DESC-recoverable	i wasn ' t up the sharp end .
+P1	test:196	date_number_score_or_stat	leave	structured fragment is recoverable under Expression/List/Attribute/punctuation policy	George Malcolm , 1974
+P1	train:8882	nominal_fragment_or_expression	leave	nominal/expression fragment is recoverable without adding a predicate	Saad Khalid, 19, of Eclipse Avenue, Mississauga.

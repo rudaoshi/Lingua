@@ -1,0 +1,106 @@
+[
+  {
+    "sample_id": "dev:152",
+    "reason": "`from Orthalicoidea` modifies the also-removed event by DESC"
+  },
+  {
+    "sample_id": "dev:456",
+    "reason": "identity clause plus participial modifier is recoverable"
+  },
+  {
+    "sample_id": "test:153",
+    "reason": "OK and smiley punctuation close a DESC-recoverable clause"
+  },
+  {
+    "sample_id": "test:801",
+    "reason": "ellipsis after `and nothing` is acceptable; model collapse is not enough to rewrite"
+  },
+  {
+    "sample_id": "train:286",
+    "reason": "list marker is discourse metadata over a recoverable clause"
+  },
+  {
+    "sample_id": "train:650",
+    "reason": "phrasal imperative; modifier chain is DESC-recoverable"
+  },
+  {
+    "sample_id": "train:687",
+    "reason": "already normalized Attribute key-value record"
+  },
+  {
+    "sample_id": "train:1143",
+    "reason": "`got it to blackline correctly` uses arg4 to a recoverable complement wrapper"
+  },
+  {
+    "sample_id": "train:1458",
+    "reason": "already normalized Attribute key-value record"
+  },
+  {
+    "sample_id": "train:2982",
+    "reason": "clausal object of `think` is correct"
+  },
+  {
+    "sample_id": "train:3327",
+    "reason": "`go hungry` is an acceptable idiomatic predicate-complement structure"
+  },
+  {
+    "sample_id": "train:4602",
+    "reason": "the non-finite complement and rhythmic/natural modifier remain recoverable"
+  },
+  {
+    "sample_id": "train:5965",
+    "reason": "title-like key-value fragment is already Attribute"
+  },
+  {
+    "sample_id": "train:6059",
+    "reason": "question wrapper and purpose infinitive are recoverable"
+  },
+  {
+    "sample_id": "train:7668",
+    "reason": "`never -> again -> there -> back -> go` matches outer-to-inner scope"
+  },
+  {
+    "sample_id": "train:7828",
+    "reason": "`going` selects the non-finite complement; `again` wraps that complement by DESC"
+  },
+  {
+    "sample_id": "train:8487",
+    "reason": "`the last place` is a result complement of `make`"
+  },
+  {
+    "sample_id": "train:8908",
+    "reason": "`Why not` question wrapper and phrasal verb are recoverable"
+  },
+  {
+    "sample_id": "train:9305",
+    "reason": "`back to Earth` is a recoverable transmission modifier"
+  },
+  {
+    "sample_id": "train:9496",
+    "reason": "`below` correctly builds the object `link below` by DESC"
+  },
+  {
+    "sample_id": "train:9596",
+    "reason": "copula-like `feel soft and soothing` is a lexical predicate choice"
+  },
+  {
+    "sample_id": "train:10067",
+    "reason": "already normalized Attribute key-value record"
+  },
+  {
+    "sample_id": "train:10321",
+    "reason": "purpose coordination under `come here` is recoverable"
+  },
+  {
+    "sample_id": "train:10486",
+    "reason": "`on Thursday` modifies the already-have-plans event by DESC"
+  },
+  {
+    "sample_id": "train:10663",
+    "reason": "already normalized Attribute key-value record"
+  },
+  {
+    "sample_id": "train:11099",
+    "reason": "`just` remains an explicit modifier of the simple copular predicate"
+  }
+]

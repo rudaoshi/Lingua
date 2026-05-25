@@ -76,8 +76,8 @@ def test_train_schema_labels_are_valid():
 
     assert label_counts["nonsense"] == 2
     assert label_counts.get("as:nonsense", 0) == 0
-    assert aux_counts["Ref"] == 706
-    assert aux_counts["Modification"] == 5801
+    assert aux_counts["Ref"] == 730
+    assert aux_counts["Modification"] == 5720
 
 
 def test_train_tokens_are_partitioned_by_lexical_nodes():
@@ -136,7 +136,7 @@ def test_train_graphs_are_single_rooted_dags():
         assert len(reachable) == len(nodes), (line_number, example["sentence"])
         assert_acyclic(adjacency)
 
-    assert root_type_counts["PunctuationalConstant"] == 9421
+    assert root_type_counts["PunctuationalConstant"] == 9419
 
 
 def test_train_aux_structures_have_required_edges():
@@ -169,5 +169,5 @@ def test_train_aux_structures_have_required_edges():
                     example["sentence"],
                 )
 
-    assert aux_edge_counts["Ref"] == 706
-    assert aux_edge_counts["Modification"] == 5801
+    assert aux_edge_counts["Ref"] == 730
+    assert aux_edge_counts["Modification"] == 5720

@@ -1,0 +1,196 @@
+priority	sample_id	review_mode	recommended_action	source_split	source_line	confidence	edge_f1	node_f1	category	sentence
+P0	train:650	ellipsis_imperative_question		train	650	0.38682234139053895	0.0	0.2857142857142857	short_clause	Come on down .
+P0	train:7668	preposition_particle_or_infinitive		train	7668	0.38752353551276386	0.0	0.4	short_clause	I'll never go back there again
+P0	train:7828	ellipsis_imperative_question		train	7828	0.2682370481809554	0.0	0.5454545454545454	short_clause	not going to do chemotherapy again .
+P0	train:1143	preposition_particle_or_infinitive		train	1143	0.10765682207817583	0.0	0.5714285714285714	short_clause	I finally got it to blackline correctly.
+P0	train:5295	copula_attribute_or_state		train	5295	0.15527753646636835	0.0	0.6666666666666666	short_clause	i am out of town.
+P0	train:1157	fragment_or_name_false_positive		train	1157	0.16065619537706435	0.0	0.8571428571428571	short_clause	Sítio do Quinto
+P0	train:67	fragment_or_name_false_positive		train	67	0.4615808032063338	0.0	0.8571428571428571	short_clause	At seven forty
+P0	train:9496	ellipsis_imperative_question		train	9496	0.797478406651095	0.0	0.8888888888888888	short_clause	See link below.
+P0	test:740	copula_attribute_or_state		test	740	0.13791685812598492	0.11764705882352941	0.5555555555555556	ordinary_or_complex_sentence	The insurgency is in a no - win position .
+P0	train:1847	discourse_coordination_punctuation		train	1847	0.40632672573852635	0.13333333333333333	0.5882352941176471	ordinary_or_complex_sentence	It said it was in January but still!!!!
+P0	test:801	simple_predicate_argument		test	801	0.17635252636699916	0.14285714285714285	0.75	short_clause	I even emailed Mackinaw Tourist and nothing.
+P0	dev:456	simple_predicate_argument		dev	456	0.4341960440192459	0.14285714285714285	0.9333333333333333	short_clause	i ' m wolf blitzer reporting .
+P0	train:4573	copula_attribute_or_state		train	4573	0.369553748100482	0.15384615384615385	0.5333333333333333	ordinary_or_complex_sentence	Yes my G 1 screen is back working.
+P0	train:8738	preposition_particle_or_infinitive		train	8738	0.3621911501348203	0.15384615384615385	0.8	short_clause	I stopped in today @ Yards Brewery.
+P0	train:5231	simple_predicate_argument		train	5231	0.43988048152684345	0.16666666666666666	0.6153846153846154	short_clause	Individuals can always have their hands slapped .
+P0	test:821	copula_attribute_or_state		test	821	0.3219795903261655	0.16666666666666666	0.7142857142857143	short_clause	This is pretty easy math for me.
+P0	train:5011	copula_attribute_or_state		train	5011	0.31229872923262175	0.18181818181818182	0.46153846153846156	short_clause	Chichester is new our master . . .
+P0	train:3643	simple_predicate_argument		train	3643	0.8502340577880673	0.18181818181818182	0.7692307692307693	ordinary_or_complex_sentence	It would have been more than one could bear!
+P0	dev:152	preposition_particle_or_infinitive		dev	152	0.3431658142106072	0.18181818181818182	0.7692307692307693	short_clause	They also removed Coelociontidae from Orthalicoidea .
+P0	dev:833	copula_attribute_or_state		dev	833	0.37109336342025545	0.18181818181818182	0.7692307692307693	short_clause	So here we are in Manson.
+P0	train:4054	fragment_or_name_false_positive		train	4054	0.044946764100424405	0.1875	0.24242424242424243	ordinary_or_complex_sentence	Emnid May 26 40.0 31.0 6.0 13.0 6.0
+P0	train:3910	ellipsis_imperative_question		train	3910	0.22648637655014675	0.19047619047619047	0.5454545454545454	ordinary_or_complex_sentence	Asked for bar - b - que sauce never got it.
+P0	train:7711	copula_attribute_or_state		train	7711	0.22229919955606356	0.2	0.5	short_clause	the food is mediocre at best.
+P0	train:9312	ellipsis_imperative_question		train	9312	0.2660214912893584	0.2	0.6	ordinary_or_complex_sentence	Watch out the poles are coming ..... my little butterfly
+P0	train:7544	copula_attribute_or_state		train	7544	0.21335375646850735	0.2	0.6666666666666666	short_clause	My mane is Visit Phunnarungsi.
+P0	test:246	copula_attribute_or_state		test	246	0.3097003827202709	0.2	0.6666666666666666	short_clause	the wings were off of it .
+P0	train:4272	discourse_coordination_punctuation		train	4272	0.19157310234323313	0.20689655172413793	0.5714285714285714	ordinary_or_complex_sentence	Indoor cats that are well cared for typically live 11 - 15 years.
+P0	train:8246	discourse_coordination_punctuation		train	8246	0.40208620850257737	0.21621621621621623	0.6486486486486487	ordinary_or_complex_sentence	Broad, I say, is 14th street and I am 3 blocks west of broad and one south of walnut.
+P0	train:4299	simple_predicate_argument		train	4299	0.23189516730395737	0.2222222222222222	0.5	ordinary_or_complex_sentence	Six month rate 10.5 pct 10.75
+P0	train:3164	discourse_coordination_punctuation		train	3164	0.3469474430671698	0.2222222222222222	0.5454545454545454	short_clause	She is a pure b****!!!
+P0	train:1992	ellipsis_imperative_question		train	1992	0.146873844883324	0.2222222222222222	0.5454545454545454	question_or_elliptical_clause	Bearded dragon question ...?
+P0	train:2250	discourse_coordination_punctuation		train	2250	0.39540055150853914	0.2222222222222222	0.6206896551724138	ordinary_or_complex_sentence	""" I hate you f... ing lot , yet you 're always asking me too many things ."
+P0	test:141	copula_attribute_or_state		test	141	0.3176483424363599	0.2222222222222222	0.7272727272727273	short_clause	My brother is in Kuwait .
+P0	train:8460	copula_attribute_or_state		train	8460	0.45677721589808734	0.2222222222222222	0.7272727272727273	short_clause	The people are against it .
+P0	train:10290	simple_predicate_argument		train	10290	0.19116766948841984	0.2222222222222222	0.7272727272727273	short_clause	Rihanna also rejected the tune .
+P0	train:528	simple_predicate_argument		train	528	0.24279409924636736	0.2222222222222222	0.7272727272727273	short_clause	He also founded JMI Equity .
+P0	train:10486	preposition_particle_or_infinitive		train	10486	0.8603222299336678	0.2222222222222222	0.9090909090909091	short_clause	already have plans on thursday.
+P0	train:8018	discourse_coordination_punctuation		train	8018	0.6062502822747412	0.23529411764705882	0.8235294117647058	ordinary_or_complex_sentence	** Edit: Living on campus at Clarkson University, I have had food delivered before.
+P0	train:3327	simple_predicate_argument		train	3327	0.07903394636805544	0.25	0.6	short_clause	The weak still go hungry .
+P0	train:8884	ellipsis_imperative_question		train	8884	0.08505063364663865	0.25	0.6	question_or_elliptical_clause	Are you really?
+P0	test:996	copula_attribute_or_state		test	996	0.41036379935370165	0.25	0.6875	ordinary_or_complex_sentence	I believe the left - behind children group is definitely more than 10 or 20 million .
+P0	train:10987	copula_attribute_or_state		train	10987	0.3572338512622105	0.25	0.8235294117647058	short_clause	someplace that is like $30 an entree.
+P0	test:991	discourse_coordination_punctuation		test	991	0.6963533046154599	0.25	0.8235294117647058	ordinary_or_complex_sentence	We ' ve got to dive for vehicles , we think .
+P0	train:4087	copula_attribute_or_state		train	4087	0.6785710896678752	0.25	0.8461538461538461	ordinary_or_complex_sentence	Both stories were later collected in the 2005 Salem 's Lot Illustrated Edition .
+P0	train:3369	ellipsis_imperative_question		train	3369	0.8057396246752818	0.25	0.88	question_or_elliptical_clause	Where does our 50% (the 1.65 million dollars) show up?
+P0	train:9294	ellipsis_imperative_question		train	9294	0.938645716563436	0.25	0.8888888888888888	short_clause	Call me to discuss.
+P0	train:8241	copula_attribute_or_state		train	8241	0.6756794292657212	0.25	1.0	short_clause	Yes bus service is available.
+P0	train:8635	discourse_coordination_punctuation		train	8635	0.29633399998851795	0.25	1.0	short_clause	Anyway Advice for travelling.
+P0	train:4537	simple_predicate_argument		train	4537	0.5373779071843562	0.25	1.0	short_clause	They met lighter than expected resistance .
+P0	test:537	discourse_coordination_punctuation		test	537	0.44654081316001865	0.25396825396825395	0.71875	ordinary_or_complex_sentence	By 11.25 a.m. ( 0025 GMT ) , Niugini Mining shares were at A$ 3.65 , up 28 cents on turnover of 108,288 shares .
+P0	train:4602	ellipsis_imperative_question		train	4602	0.4494983946486299	0.2608695652173913	0.5	ordinary_or_complex_sentence	Imagine the tension melting away as you continue breathing rhythmically and naturally.
+P0	train:10321	preposition_particle_or_infinitive		train	10321	0.4505110806324015	0.2608695652173913	0.6363636363636364	ordinary_or_complex_sentence	Many peasants often come here to learn techniques and purchase quality varieties .
+P0	test:2	discourse_coordination_punctuation		test	2	0.10326245062468643	0.26666666666666666	1.0	question_or_elliptical_clause	Bryan, you're in, right?
+P0	train:6059	ellipsis_imperative_question		train	6059	0.16429411473994715	0.2727272727272727	0.8181818181818182	question_or_elliptical_clause	Can you please give me a call to discuss trademarking?
+P0	train:1868	fragment_or_name_false_positive		train	1868	0.45654782301593155	0.2857142857142857	0.8888888888888888	short_clause	Associated British Picture Corporation
+P0	train:4509	simple_predicate_argument		train	4509	0.4447605218770808	0.2857142857142857	0.8888888888888888	short_clause	Dr Joseph retired.
+P0	train:3933	discourse_coordination_punctuation		train	3933	0.23623273851844437	0.2926829268292683	0.6829268292682927	ordinary_or_complex_sentence	I WAS ALSO THERE OF JULY 4TH 2008, WHEN MY DAUGHTER S BUFFALO WINGS CAME OUT WITH A FLY ON IT.
+P0	train:1581	discourse_coordination_punctuation		train	1581	0.4099499222365805	0.30303030303030304	0.8484848484848485	ordinary_or_complex_sentence	Survivors are being found all the time, including two children who lost their parents.
+P0	dev:349	fragment_or_name_false_positive		dev	349	0.20225594445999207	0.3076923076923077	0.9333333333333333	short_clause	Roles Synopsis Setting Mid 18th century .
+P0	train:23	preposition_particle_or_infinitive		train	23	0.261410038275316	0.3157894736842105	0.7619047619047619	ordinary_or_complex_sentence	Gates worked 30% of the time at best.
+P0	train:9003	simple_predicate_argument		train	9003	0.1293165618917837	0.3157894736842105	0.8571428571428571	short_clause	Ijaz Ahmed c Irani b Mullally 48
+P0	train:4431	discourse_coordination_punctuation		train	4431	0.3494276823098783	0.3333333333333333	0.6875	ordinary_or_complex_sentence	this man , abu abbas has lived an i tin rant life , he ' s been in tunas .
+P0	train:8487	simple_predicate_argument		train	8487	0.3153156729223623	0.3333333333333333	0.7142857142857143	short_clause	Maybe make Japan the last place .
+P0	train:7341	copula_attribute_or_state		train	7341	0.33357872543819256	0.3333333333333333	0.7692307692307693	ordinary_or_complex_sentence	These are not isolated events . . . This is a revolution from within .
+P0	train:9079	discourse_coordination_punctuation		train	9079	0.39779497470070563	0.3333333333333333	0.8	ordinary_or_complex_sentence	it is certainly behind much of the action in Iraq ,
+P0	train:9189	discourse_coordination_punctuation		train	9189	0.22205175219980036	0.3333333333333333	0.8571428571428571	short_clause	Ehrenfels Castle , Rüdesheim am Rhein
+P0	train:6619	fragment_or_name_false_positive		train	6619	0.308264763196257	0.3333333333333333	1.0	short_clause	Cimetière parisien de Pantin
+P0	train:4311	discourse_coordination_punctuation		train	4311	0.33047033832039574	0.34285714285714286	0.7567567567567568	ordinary_or_complex_sentence	We have an update tonight on this , the volcano in Mexico , they call El Popo .
+P0	train:7015	preposition_particle_or_infinitive		train	7015	0.3518522642056841	0.35714285714285715	0.7586206896551724	ordinary_or_complex_sentence	This may be of interest to you I have a free online dating service.
+P0	test:871	preposition_particle_or_infinitive		test	871	0.2771070943989773	0.358974358974359	0.7692307692307693	ordinary_or_complex_sentence	408 - Number of species that could be extinct by 2050 if the global - warming trend continues.
+P0	train:9596	simple_predicate_argument		train	9596	0.29474420173868604	0.36363636363636365	0.6666666666666666	short_clause	The golden rays feel soft and soothing.
+P0	train:4333	ellipsis_imperative_question		train	4333	0.4463959018398244	0.36363636363636365	0.7272727272727273	short_clause	Not what i expected!
+P0	train:9305	preposition_particle_or_infinitive		train	9305	0.35281260016818555	0.36363636363636365	0.7692307692307693	ordinary_or_complex_sentence	The data will be transmitted back to Earth .
+P0	train:3208	copula_attribute_or_state		train	3208	0.2641694660120639	0.36363636363636365	0.7692307692307693	short_clause	That temper is only one problem.
+P1	train:954	table_or_header_list	audit_expression_list_policy	train	954	0.05765197072571819	0.0	0.0	table_header_or_label	W L T PF PA
+P1	train:4203	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	4203	0.16231450255091387	0.0	0.0	short_name_or_fragment	Karen . x54667
+P1	train:2953	opaque_identifier_or_attachment	mostly_policy_or_model_coverage	train	2953	0.4622802963399249	0.0	0.0	nominal_or_other_fragment	Kyle.Jones@ra
+P1	dev:9	date_number_score_or_stat	audit_expression_list_policy	dev	9	0.17636492863550599	0.0	0.0	identifier_or_code	<<MEH-risk Oct 20>>
+P1	train:4392	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	4392	0.1482354515776831	0.0	0.0	short_name_or_fragment	i.e.
+P1	train:2679	date_number_score_or_stat	audit_expression_list_policy	train	2679	0.13442425512154632	0.0	0.2222222222222222	date_number_or_code	- Primary Rights 4-12 .doc
+P1	train:2371	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	2371	0.10180436229099175	0.0	0.25	proper_name_or_title	- Filet - O - Fish
+P1	train:7705	short_discourse_or_ellipsis	review_if_pattern_recurs	train	7705	0.11780202192816773	0.0	0.2857142857142857	nominal_or_other_fragment	My 2 c. ....
+P1	dev:540	short_discourse_or_ellipsis	review_if_pattern_recurs	dev	540	0.04530552095595294	0.0	0.3333333333333333	nominal_or_other_fragment	Đắk Lắk Province
+P1	train:2502	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	2502	0.44396734630876694	0.0	0.4	short_name_or_fragment	- Juggernaut>
+P1	train:8908	ordinary_sentence_misclassified	manual_semantic_review	train	8908	0.4020775553469239	0.0	0.4444444444444444	nominal_or_other_fragment	Why not look it up!
+P1	train:6406	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	6406	0.38192221307209273	0.0	0.4444444444444444	proper_name_or_title	[MfM Act 3, Sc. 2]}
+P1	train:10067	field_attribute_record	audit_attribute_policy	train	10067	0.039984868188941064	0.0	0.4444444444444444	date_number_or_code	the number: 1-800-991-9019
+P1	train:687	field_attribute_record	audit_attribute_policy	train	687	0.07362280849126433	0.0	0.5	field_label_or_key_value	the passcode: 6871082#
+P1	train:5687	nominal_fragment_or_expression	review_if_pattern_recurs	train	5687	0.15006393054697384	0.0	0.5714285714285714	nominal_or_other_fragment	Sils im Engadin / Segl
+P1	train:8534	date_number_score_or_stat	audit_expression_list_policy	train	8534	0.20483128830242364	0.0	0.6153846153846154	nominal_or_other_fragment	Tuesday, March 20th.
+P1	train:2919	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	2919	0.11093504715008795	0.0	0.631578947368421	proper_name_or_title	Blaze Ya Dead Homie - ( 9 )
+P1	train:7886	date_number_score_or_stat	audit_expression_list_policy	train	7886	0.21505664694537277	0.0	0.6666666666666666	date_number_or_code	Russ 3-5297
+P1	train:5505	short_discourse_or_ellipsis	review_if_pattern_recurs	train	5505	0.04758057275889711	0.0	0.6666666666666666	nominal_or_other_fragment	Lorie Leigh 46093
+P1	train:4916	date_number_score_or_stat	audit_expression_list_policy	train	4916	0.40618447507058963	0.0	0.6666666666666666	proper_name_or_title	SKS Tana 70 03/09 Mideast / Japan W145 CNR .
+P1	train:7058	nominal_fragment_or_expression	review_if_pattern_recurs	train	7058	0.07705305397233793	0.0	0.7142857142857143	nominal_or_other_fragment	Barnsley 3 Huddersfield 1
+P1	train:10095	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	10095	0.28421559403576985	0.0	0.7272727272727273	proper_name_or_title	Social ( Coronel Fabriciano )
+P1	train:9414	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	9414	0.09508569842819829	0.0	0.7368421052631579	proper_name_or_title	86M - Enron Net Works LLC
+P1	train:5360	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	5360	0.44651528590765754	0.0	0.75	short_name_or_fragment	Vaz / Obervaz
+P1	train:8589	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	8589	0.4140084576856259	0.0	0.75	short_name_or_fragment	Volendam 0 .
+P1	train:4964	short_discourse_or_ellipsis	review_if_pattern_recurs	train	4964	0.16845973011445753	0.0	0.75	nominal_or_other_fragment	June 14 Reception
+P1	train:861	date_number_score_or_stat	audit_expression_list_policy	train	861	0.2606685504281989	0.0	0.75	date_number_or_code	1381 W. Hubbard
+P1	train:2564	short_discourse_or_ellipsis	review_if_pattern_recurs	train	2564	0.42958847458580934	0.0	0.7692307692307693	nominal_or_other_fragment	de Nooijer 80th ) .
+P1	test:66	proper_name_title_or_signature	mostly_policy_or_model_coverage	test	66	0.452464907824188	0.0	0.7692307692307693	proper_name_or_title	Paris ( Chatenay Malabry ) .
+P1	train:5126	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	5126	0.09336695524249958	0.0	0.8	short_name_or_fragment	Tana Cashion
+P1	train:9722	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	9722	0.06122559014632279	0.0	0.8	short_name_or_fragment	Khymberly Booth
+P1	test:207	proper_name_title_or_signature	mostly_policy_or_model_coverage	test	207	0.005559797083862794	0.0	0.8	short_name_or_fragment	thanks d
+P1	train:10314	ordinary_sentence_misclassified	manual_semantic_review	train	10314	0.17815184212838261	0.0	0.8	short_name_or_fragment	miles ?
+P1	train:10005	ordinary_sentence_misclassified	manual_semantic_review	train	10005	0.29403506136930235	0.0	0.8	short_name_or_fragment	And ?
+P1	train:2971	opaque_identifier_or_attachment	mostly_policy_or_model_coverage	train	2971	0.25693206143384784	0.0	0.8	short_name_or_fragment	---- cgy
+P1	train:1950	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	1950	0.00335923789763391	0.0	0.8	short_name_or_fragment	Donna Sells
+P1	train:9845	ordinary_sentence_misclassified	manual_semantic_review	train	9845	0.22727920303791443	0.0	0.8	short_name_or_fragment	theoretically ?
+P1	train:9728	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	9728	0.43978443969099906	0.0	0.8	short_name_or_fragment	select PROGRAMS
+P1	train:862	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	862	0.013339534457685678	0.0	0.8	short_name_or_fragment	Wafa Amr
+P1	train:6957	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	6957	0.3129475879296903	0.0	0.8	proper_name_or_title	The Clay Cole Show
+P1	train:5965	field_attribute_record	audit_attribute_policy	train	5965	0.04568075888358833	0.0	0.8	field_label_or_key_value	CHERNOBYL ACCIDENT: TEN YEARS ON
+P1	train:1458	field_attribute_record	audit_attribute_policy	train	1458	0.35889780295467505	0.0	0.8	field_label_or_key_value	Location: Houston, Texas USA
+P1	train:10663	field_attribute_record	audit_attribute_policy	train	10663	0.16085252670337952	0.0	0.8333333333333334	field_label_or_key_value	Place: University of Pennsylvania
+P1	test:90	short_discourse_or_ellipsis	review_if_pattern_recurs	test	90	0.45008674645350844	0.0	0.8571428571428571	nominal_or_other_fragment	Attendancce 35,000 .
+P1	train:5836	table_or_header_list	audit_expression_list_policy	train	5836	0.023465260172622578	0.0	0.8571428571428571	table_header_or_label	LATEST PREVIOUS ACTUAL
+P1	dev:270	short_discourse_or_ellipsis	review_if_pattern_recurs	dev	270	0.02004508199372582	0.0	0.8571428571428571	nominal_or_other_fragment	Marquis de Condorcet
+P1	train:68	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	68	0.3450811555883142	0.0	0.8571428571428571	short_name_or_fragment	** Disclaimer **
+P1	train:5901	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	5901	0.41864619210114895	0.0	0.8571428571428571	short_name_or_fragment	( END VIDEOTAPE )
+P1	train:4434	ordinary_sentence_misclassified	manual_semantic_review	train	4434	0.44098659244054206	0.0	0.8888888888888888	short_name_or_fragment	But institutionally?
+P1	dev:884	proper_name_title_or_signature	mostly_policy_or_model_coverage	dev	884	0.30477352924057477	0.0	0.8888888888888888	short_name_or_fragment	Yes, Manson.
+P1	train:3931	nominal_fragment_or_expression	review_if_pattern_recurs	train	3931	0.04553451199011457	0.0	0.9090909090909091	nominal_or_other_fragment	Ham s on Friendly...RIP
+P1	train:639	short_discourse_or_ellipsis	review_if_pattern_recurs	train	639	0.15165714829066584	0.0	0.9230769230769231	nominal_or_other_fragment	Right , right , yes .
+P1	test:286	proper_name_title_or_signature	mostly_policy_or_model_coverage	test	286	0.10480554523519098	0.0	1.0	short_name_or_fragment	Blogging Katrina
+P1	train:680	nominal_fragment_or_expression	review_if_pattern_recurs	train	680	0.423851404327855	0.09523809523809523	0.6086956521739131	nominal_or_other_fragment	GOVT.BUDGET ( bln pts ) Govt.Fcast 96
+P1	train:1933	date_number_score_or_stat	audit_expression_list_policy	train	1933	0.28545696057372816	0.09523809523809523	0.782608695652174	date_number_or_code	Duke University Press , January 1 , 2009 .
+P1	train:4049	nominal_fragment_or_expression	review_if_pattern_recurs	train	4049	0.4244569549188668	0.1	0.9090909090909091	nominal_or_other_fragment	James Winslow ( 1'26.011 )
+P1	train:11129	date_number_score_or_stat	audit_expression_list_policy	train	11129	0.38427001720811665	0.10526315789473684	0.6666666666666666	date_number_or_code	-- Paris Newsroom +33 1 4221 5452
+P1	train:1751	date_number_score_or_stat	audit_expression_list_policy	train	1751	0.38427001720811665	0.10526315789473684	0.6666666666666666	date_number_or_code	-- Paris newsroom +33 1 4221 5452
+P1	dev:342	ordinary_sentence_misclassified	manual_semantic_review	dev	342	0.451935213952936	0.10526315789473684	0.6666666666666666	identifier_or_code	There are other known myosin light-chain kinase enzymes .
+P1	test:939	field_attribute_record	audit_attribute_policy	test	939	0.35128560010432136	0.11764705882352941	0.5882352941176471	field_label_or_key_value	10. Corser 38:42.015
+P1	train:4496	date_number_score_or_stat	audit_expression_list_policy	train	4496	0.07571287632728066	0.125	0.2222222222222222	nominal_or_other_fragment	Sales 12.50 13.00 11.27
+P1	train:2435	date_number_score_or_stat	audit_expression_list_policy	train	2435	0.10573706483468807	0.125	1.0	date_number_or_code	1689 - EPI - EBS Ventures, LLC
+P1	train:2972	field_attribute_record	audit_attribute_policy	train	2972	0.07596926736416852	0.14285714285714285	0.3333333333333333	email_url_or_domain	"Email: "" Ryan Reynolds "" <rreynol...@cogeco.ca>"
+P1	train:4030	nominal_fragment_or_expression	review_if_pattern_recurs	train	4030	0.4418118635791773	0.14285714285714285	0.375	nominal_or_other_fragment	St. Louis 21,346 0
+P1	train:10141	date_number_score_or_stat	audit_expression_list_policy	train	10141	0.16140182048265062	0.14285714285714285	0.75	date_number_or_code	Friday, June 04, 2004
+P1	train:544	field_attribute_record	audit_attribute_policy	train	544	0.4072156255949305	0.15384615384615385	0.8	field_label_or_key_value	EDIT: now i'm curious ...
+P1	train:852	nominal_fragment_or_expression	review_if_pattern_recurs	train	852	0.1868464110128671	0.15384615384615385	0.8	nominal_or_other_fragment	Vampire Weekend ( 22 , 52 )
+P1	train:9929	ordinary_sentence_misclassified	manual_semantic_review	train	9929	0.1353338491053674	0.15384615384615385	1.0	nominal_or_other_fragment	It's dark, dingy & dirty.
+P1	train:9510	nominal_fragment_or_expression	review_if_pattern_recurs	train	9510	0.18175184665061803	0.16666666666666666	0.5714285714285714	nominal_or_other_fragment	For about forty - five years .
+P1	dev:165	nominal_fragment_or_expression	review_if_pattern_recurs	dev	165	0.058473276812076806	0.16666666666666666	0.7142857142857143	nominal_or_other_fragment	Argentinian foods of course, LMAO.
+P1	train:9458	date_number_score_or_stat	audit_expression_list_policy	train	9458	0.28343360407350326	0.17391304347826086	0.56	identifier_or_code	List of Hot 100 number-one singles of 1992 ( U.S . )
+P1	train:7718	date_number_score_or_stat	audit_expression_list_policy	train	7718	0.4441178640213632	0.19047619047619047	0.9090909090909091	nominal_or_other_fragment	Wk to Aug 28 Chg on wk Chg on yr
+P1	test:769	date_number_score_or_stat	audit_expression_list_policy	test	769	0.30169117190142425	0.1935483870967742	0.3225806451612903	proper_name_or_title	Elect Res April 20 43.0 32.0 6.0 12.0 4.0
+P1	train:9291	field_attribute_record	audit_attribute_policy	train	9291	0.050986534721124424	0.2	0.5	field_label_or_key_value	Fun picture websites (:?
+P1	train:10563	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	10563	0.17728066826833272	0.2	0.5	proper_name_or_title	WWW - Wonderful Wild Wildernest inn
+P1	train:8158	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	8158	0.19942350421752872	0.2222222222222222	0.5454545454545454	short_name_or_fragment	PONCHATOULA, La. --
+P1	train:8772	table_or_header_list	audit_expression_list_policy	train	8772	0.38206318018755	0.2222222222222222	0.7	table_header_or_label	UNDERLYING GOVT BOND 7.0 PCT SEPT 2001
+P1	train:9470	short_discourse_or_ellipsis	review_if_pattern_recurs	train	9470	0.4022982729255736	0.2222222222222222	0.7272727272727273	nominal_or_other_fragment	Albert Prosa ( 6 )
+P1	train:8131	date_number_score_or_stat	audit_expression_list_policy	train	8131	0.4509784664356793	0.2222222222222222	0.7272727272727273	date_number_or_code	Paul Noce ( 1986 )
+P1	train:3408	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	3408	0.2953824024949845	0.2222222222222222	0.9	proper_name_or_title	Let It Shine ( Linda Hargrove song )
+P1	train:10807	table_or_header_list	audit_expression_list_policy	train	10807	0.10062543394254077	0.25	0.6	table_header_or_label	W D L PCT GB
+P1	train:3864	nominal_fragment_or_expression	review_if_pattern_recurs	train	3864	0.21938211937259228	0.25	0.6	nominal_or_other_fragment	C. Hooper run out 7
+P1	train:3824	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	3824	0.41850967101659065	0.25	0.8	proper_name_or_title	Earl Hilliard ( D )
+P1	train:10428	short_discourse_or_ellipsis	review_if_pattern_recurs	train	10428	0.21249302165781161	0.25	0.8	nominal_or_other_fragment	Chicago, IL 60622
+P1	dev:855	short_discourse_or_ellipsis	review_if_pattern_recurs	dev	855	0.20175141482556677	0.25	0.8	nominal_or_other_fragment	Scott Hend ( 4 )
+P1	train:7	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	7	0.17615944269191555	0.25	0.8	proper_name_or_title	Gardiner , New York
+P1	train:1528	field_attribute_record	audit_attribute_policy	train	1528	0.4079647985795116	0.25	0.9411764705882353	field_label_or_key_value	Job ID: J12746KM
+P1	train:2690	ordinary_sentence_misclassified	manual_semantic_review	train	2690	0.43030058291523104	0.2641509433962264	0.723404255319149	identifier_or_code	GCP procedure is to create Counterparty names that reflect either the Tradename / Division name or Parent Name--not reflect both simultaneously.
+P1	train:5136	date_number_score_or_stat	audit_expression_list_policy	train	5136	0.3051093263561326	0.2727272727272727	0.6666666666666666	identifier_or_code	List of number-one R & B albums of 1999 ( U.S . )
+P1	train:7073	nominal_fragment_or_expression	review_if_pattern_recurs	train	7073	0.273906467151909	0.2727272727272727	0.7272727272727273	identifier_or_code	Competitive tournaments All-Time Record Against FIFA Recognized Nations
+P1	train:10703	nominal_fragment_or_expression	review_if_pattern_recurs	train	10703	0.45928744507920294	0.2857142857142857	0.7142857142857143	nominal_or_other_fragment	25px Illinois Route 96
+P1	train:8995	nominal_fragment_or_expression	review_if_pattern_recurs	train	8995	0.06362508698208838	0.2857142857142857	0.75	nominal_or_other_fragment	St Chad 's College , Durham
+P1	train:993	date_number_score_or_stat	audit_expression_list_policy	train	993	0.3917908233406853	0.2857142857142857	0.782608695652174	date_number_or_code	Yamakage Hiroaki ( Japan ) 37.93 ; 7 .
+P1	train:7572	nominal_fragment_or_expression	review_if_pattern_recurs	train	7572	0.4295119924348776	0.2857142857142857	0.875	nominal_or_other_fragment	Pěnčín ( Jablonec nad Nisou District )
+P1	train:2399	nominal_fragment_or_expression	review_if_pattern_recurs	train	2399	0.17868818119182794	0.2857142857142857	0.875	nominal_or_other_fragment	St. Mary 's Cathedral Basilica , Galveston
+P1	train:9444	table_or_header_list	audit_expression_list_policy	train	9444	0.4360226064388889	0.2857142857142857	0.875	table_header_or_label	ATLANTA 81 49 .623 -
+P1	dev:568	table_or_header_list	audit_expression_list_policy	dev	568	0.2820036069165699	0.2857142857142857	0.875	table_header_or_label	CHICAGO 17 1 .944 -
+P1	train:4972	table_or_header_list	audit_expression_list_policy	train	4972	0.20191114803265328	0.2857142857142857	0.8888888888888888	table_header_or_label	SAN DIEGO AT MONTREAL
+P1	train:4310	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	4310	0.1787615780262889	0.2857142857142857	0.8888888888888888	proper_name_or_title	St James ' Park
+P1	train:4350	table_or_header_list	audit_expression_list_policy	train	4350	0.09590690774914674	0.2857142857142857	0.8888888888888888	table_header_or_label	NY RANGERS AT TORONTO
+P1	train:5575	table_or_header_list	audit_expression_list_policy	train	5575	0.0684658205010254	0.2857142857142857	0.8888888888888888	table_header_or_label	ST LOUIS AT CHICAGO
+P1	train:4774	nominal_fragment_or_expression	review_if_pattern_recurs	train	4774	0.40904700935033456	0.3076923076923077	0.6363636363636364	nominal_or_other_fragment	She seems to lope one stride and trot the next and repeat ...
+P1	train:6936	nominal_fragment_or_expression	review_if_pattern_recurs	train	6936	0.4050479506261925	0.3076923076923077	0.9333333333333333	nominal_or_other_fragment	Paul Phillips ( songwriter / singer )
+P1	train:3499	field_attribute_record	audit_attribute_policy	train	3499	0.0462074349320272	0.3157894736842105	0.9523809523809523	field_label_or_key_value	Pin #for Paul Kaufman ONLY: 362416
+P1	train:74	nominal_fragment_or_expression	review_if_pattern_recurs	train	74	0.3461585088573524	0.32	0.9230769230769231	nominal_or_other_fragment	As the year progresses, the more impressive your ideas and works become.
+P1	train:9363	date_number_score_or_stat	audit_expression_list_policy	train	9363	0.36861979578746246	0.32727272727272727	0.5964912280701754	proper_name_or_title	Fernando Scherer ( 49.79 ) Gustavo Borges ( 48.61 ) Carlos Jayme ( 49.88 ) Edvaldo Silva Filho ( 49.12 )
+P1	train:2768	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	2768	0.2400014375117797	0.3333333333333333	0.5	short_name_or_fragment	In California . . .
+P1	train:8048	nominal_fragment_or_expression	review_if_pattern_recurs	train	8048	0.3340379857280819	0.3333333333333333	0.7142857142857143	nominal_or_other_fragment	Sure , let 's invade Iran .
+P1	train:192	short_discourse_or_ellipsis	review_if_pattern_recurs	train	192	0.2676743318217989	0.3333333333333333	0.75	nominal_or_other_fragment	Pam the Pom
+P1	train:7108	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	7108	0.44249499009216825	0.3333333333333333	0.75	short_name_or_fragment	Danny (Australia)
+P1	train:1438	nominal_fragment_or_expression	review_if_pattern_recurs	train	1438	0.45524346130402177	0.3333333333333333	0.7567567567567568	identifier_or_code	Emilia-Romagna , Friuli-Venezia Giulia , Trentino-Alto Adige / Südtirol , Veneto
+P1	train:841	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	841	0.0795922816720062	0.3333333333333333	0.8571428571428571	proper_name_or_title	Mika Singh , Hard Kaur
+P1	train:3346	proper_name_title_or_signature	mostly_policy_or_model_coverage	train	3346	0.296463395158248	0.3333333333333333	0.8571428571428571	proper_name_or_title	Bugs Bunny , Yosemite Sam
+P1	train:7688	date_number_score_or_stat	audit_expression_list_policy	train	7688	0.44656398798828667	0.3333333333333333	0.8571428571428571	date_number_or_code	Uzbekistan ( 1998 , 1999 )
+P1	train:8375	nominal_fragment_or_expression	review_if_pattern_recurs	train	8375	0.4448207756617969	0.3333333333333333	0.972972972972973	identifier_or_code	It lies approximately north-east of Koczała , north-west of Człuchów , and south-west of the regional capital Gdańsk .
+P1	train:7978	field_attribute_record	audit_attribute_policy	train	7978	0.25656653938494284	0.3333333333333333	1.0	field_label_or_key_value	To Whom It May Concern:
+P1	train:1366	ordinary_sentence_misclassified	manual_semantic_review	train	1366	0.27581561706514307	0.3404255319148936	0.6530612244897959	identifier_or_code	In the Haiyan dialect , first - and third-person pronouns are pluralized with , but the second-person plural is a separate root .
+P1	dev:279	field_attribute_record	audit_attribute_policy	dev	279	0.21875222413064876	0.36363636363636365	0.7058823529411765	identifier_or_code	From: saem_aero - ga on 26 Oct 2004 18:11 PDT
+P1	train:9314	nominal_fragment_or_expression	review_if_pattern_recurs	train	9314	0.4230764632003152	0.36363636363636365	0.7692307692307693	nominal_or_other_fragment	i wasn ' t up the sharp end .
+P1	test:196	date_number_score_or_stat	audit_expression_list_policy	test	196	0.3334760305494552	0.36363636363636365	0.8333333333333334	date_number_or_code	George Malcolm , 1974
+P1	train:8882	nominal_fragment_or_expression	review_if_pattern_recurs	train	8882	0.2012364656591642	0.36363636363636365	0.8333333333333334	nominal_or_other_fragment	Saad Khalid, 19, of Eclipse Avenue, Mississauga.

@@ -1,0 +1,158 @@
+split	line	pred_node	comp_node	pred	comp	sentence	action	reason
+train	48	0	2	is	endemic	It is endemic to Seychelles .	merge_leaf
+train	181	8	11	is	forested	Of this area , 60.7 % is used for agricultural purposes , while 29.0 % is forested .	merge_leaf
+train	264	8	22	are	relatively unknown	This is most likely due to the size of the communities , individually they are relatively unknown to residents outside of Nova Scotia 's Eastern Shore .	split_comp
+train	267	10	11	being	incompetent	The opposition motion against Banharn accuses him of being incompetent , lacking ethical leadership and alleges his administration is corrupt .	merge_leaf
+train	316	0	35	is	worse still	For me , it is worse still that the younger generation who celebrate hard - core porn do not seem to realise that they are celebrating hard - core values , and that these are the values of hard - core , globalised capitalism . ''	split_comp
+train	341	0	12	is	split	"The pale martin of northern India and southeastern China is now usually split as a separate species "" Riparia diluta "" ."	merge_leaf
+train	735	5	6	is	endemic	It is a leafy evergreen shrub that is endemic to Venezuela .	merge_leaf
+train	753	0	2	' s	remarkable	it 's remarkable .	merge_leaf
+train	847	3	4	is	simplz	The architecture is simplz splendid.	merge_chain_head
+train	856	0	5	were	excluded	Cardiac and adrenergic diseases were excluded.	merge_leaf
+train	897	9	12	was	underway	had put the film in turnaround ; Despite this in May 2013 , Frankie Valli noted that production was still underway .	merge_leaf
+train	932	0	2	is	legal	In Romania it is legal for transgender people to change their first name to reflect their gender identity based on personal choice .	merge_leaf
+train	1033	9	11	' s	Amore	"The film 's soundtrack features multiple versions of the song "" That 's Amore "" ."	leave	quoted song title / nominal title expression, not a simple predicative adjective
+train	1093	2	4	' re	unacceptable	we say they 're unacceptable .	merge_leaf
+train	1119	15	20	is	revealed	The stories locate it somewhere in Great Britain and sometimes associate it with real cities , though more usually its precise location is not revealed .	merge_leaf
+train	1180	0	11	is	essential	An understanding of the mechanistic consequences following such genetic alterations is essential to an understanding of the development of these lymphoid neoplasms .	merge_leaf
+train	1258	12	13	being	shot	The wheel axels can be adjusted , allowing the Dolly to make tight curves or to circle the subject being shot .	merge_leaf
+train	1357	0	6	is	sacred	The life they had is sacred too . )	merge_leaf
+train	1489	0	6	is	quickening	the pace of job cuts is quickening .	merge_leaf
+train	1643	7	9	is	limiting	These interactions require ATP/Mg2+ and when ATP is limiting the PR complex is altered to one containing the proteins p60 and p48 , but lacking immunophilins and p23 .	merge_leaf
+train	1646	0	5	is	now	With well over 100 U.S. investigators now in Yemen , the search for evidence is now fully under way .	merge_chain_head
+train	1658	1	9	is	intense	The water flow of Tijuana River is often intense ; droughts dry up the river completely while the same area overflows during flood .	merge_leaf
+train	1667	4	12	is	critical	Previous studies showed that the first ATG of the rex gene is critical for Rex production and function.	merge_leaf
+train	1835	1	8	were	minor	In Panama , the U.S. interests at stake were happily minor ; the only people killed were foreigners hapless enough to trust American will .	merge_leaf
+train	1941	1	3	were	Kurdish	Soldiers were Kurdish , but the special forces calling in air strikes on Iraqi positions were American .	merge_leaf
+train	1941	4	15	were	American	Soldiers were Kurdish , but the special forces calling in air strikes on Iraqi positions were American .	merge_leaf
+train	1974	3	4	was	unsuccessful	He also introduced legislation ( which was unsuccessful ) in September 1987 to prohibit economic and military assistance to Zaire , citing poor human rights , corruption , and collaboration with South Africa .	merge_leaf
+train	2003	21	23	is	frozen	There 's no one economic statistics to point to a downturn , it 's an overall feeling , a psychological feeling that everything is frozen , everything is on hold .	merge_leaf
+train	2102	0	12	are	understood	The mechanisms by which the effects of IL-2 are propagated within cells are not understood.	merge_leaf
+train	2121	0	7	is	undissociable	This ability of CIITA to facilitate promoter occupation is undissociable from its transactivation potential.	merge_leaf
+train	2122	10	13	was	injured	English manager Hope Powell needed another centre forward because Kelly Smith was injured and Angela Banks retired from international football due to a fear of flying .	merge_leaf
+train	2184	0	7	is	smaller	The impact of single - parent custody is smaller because at least the mother is at home .	merge_leaf
+train	2330	0	5	was	back	it was her first night back .	leave	nominal expression `her first night back`, not simple be+adjective
+train	2359	0	4	is	next	""" larry king live "" is next ."	merge_leaf
+train	2360	0	8	were	synthesized	Analogs of 1 alpha,25-dihydroxyvitamin D3 ( 1 alpha,25-(OH)2D3 ) with substitutions on C-11 were synthesized.	merge_leaf
+train	2374	18	13	was being	studied	As of 2010 , the use of predictive visual tracking measurement to identify mild traumatic brain injury was being studied .	merge_leaf
+train	2739	11	16	are	over	"Dal Maso declined to comment on the alleged fifth murder , saying only that "" the interrogations are not over yet "" with investigators ."	merge_leaf
+train	2765	5	7	is	its	that does include the magellan fund which is its biggest .	merge_chain_head
+train	2907	1	3	is	native	It is native to Australia , but it can be found in other parts of the world as an introduced species , often growing in disturbed and waste areas such as roadsides and lots .	merge_leaf
+train	2912	14	17	is	single	Perhaps the shadow of her childhood is behind the setbacks in her love life , so that even today she is still single .	merge_leaf
+train	2952	12	15	is	remarkable	The Hangzhou new , high level technology industry development zone has actively transformed the achievements of new , high level technology , and the effect is remarkable .	merge_leaf
+train	3037	1	5	are	all	and these are all also important stories obviously .	leave	classification NP `important stories`; `all/also/important` belong inside the nominal expression
+train	3091	0	8	was	its	The Ba , or soul , of later Egypt was its direct descendant .	leave	identity NP `its direct descendant`, not a simple state complement
+train	3122	6	11	is	imminent	However , the Pentagon is downplaying the idea that an invasion of Baghdad is imminent .	merge_leaf
+train	3209	9	12	is	included	She initially refuses the position when the landlord Steve McDonald ( Simon Gregson ) explains that accommodation is not included .	merge_leaf
+train	3266	14	7	are	numerous	There are numerous desperate people in the world, in different cultures, countries and continents.	leave	existential `there be`; complement is the existent NP modifier chain
+train	3307	1	6	is	immunosuppressive	The increase of cortisol is immunosuppressive and reduces GR concentration both in nervous and immune systems .	merge_leaf
+train	3315	12	16	were	vulnerable	Sources say the Navy itself will accept part of the blame , by admitting all its ships were vulnerable and its sailors were not trained to expect this kind of attack .	merge_leaf
+train	3417	0	6	was	forbidden	Trading with the United Kingdom was forbidden .	merge_leaf
+train	3471	0	7	is	sufficient	In the case of HIV-1 , the transcription factor NF-kappa B is sufficient for inducible transcriptional activation .	merge_leaf
+train	3473	3	7	was	required	He said further scientific study was required and if it was found that action was needed it should be taken by the European Union .	merge_leaf
+train	3473	16	18	was	needed	He said further scientific study was required and if it was found that action was needed it should be taken by the European Union .	merge_leaf
+train	3576	0	10	are	both	Lt . Governor candidate ' s Chap Peterson and Leslie Byrne are both good politicians , but need to start thinking outside the box with legislation that will attract and benefit economic growth for the business world and create sustainable workplaces for Virginians .	leave	classification NP `both good politicians`, not a simple state complement
+train	3677	0	6	was	proven	The popularity of the nickname was proven as the manufacturer decided to use only the informal form in the names of some models of payazzo combining coin flicking with an electronic game of luck .	merge_leaf
+train	3758	12	18	was	born	Bobby saw this as a seed for a new business venture and the idea of Coffee Republic was born .	merge_leaf
+train	3842	2	13	were	banned	Daoud said books by other authors , including British Journalist Patrick Seale , were also banned .	merge_leaf
+train	3868	13	15	is	illegal	Mexican officials contend that there is no scientific basis for the ban , and that it is illegal under international trading rules of the World Trade Organisation .	merge_leaf
+train	4053	0	3	was	limited	Early progress was limited , and it was not until the early 20th century that conclusive detections of astronomical objects other than the Sun and Moon were made in infrared light .	merge_leaf
+train	4488	0	14	was	killed	His son , a student at the Beijing Institute of Aeronautics and Astronautics was also killed .	merge_leaf
+train	4644	13	20	is	most closely related	It is one of six species of grass parrot in the genus Neophema , and is most closely related to the Turquoise Parrot .	split_comp
+train	4655	9	12	were	injured	Driver Pierre Levegh and more than 80 spectators lost their lives , while many more were injured .	merge_leaf
+train	4800	8	9	being	published	A court-ordered ban prevented specific details from being published .	merge_leaf
+train	4990	0	3	was	devastating	yeah , it was devastating , to say the least , but we really didn ' t know	merge_leaf
+train	5011	0	3	is	new	Chichester is new our master . . .	leave	ill-formed nominal/classification fragment `new our master`; not safely recoverable as simple copula
+train	5034	0	10	is	dirty gray brown	The dorsal hindwing is dirty gray brown , but lighter near the base .	merge_leaf
+train	5044	12	2	' m	nervous	to a point i ' m nervous but i just want him in my arms .	merge_leaf
+train	5083	3	4	was	basically	The Mission was basically latin - american.	merge_chain_head
+train	5104	1	14	is	far from clear	"The nature of their relationship is far from clear : Mstislav Rostropovich described it as "" tender "" ."	split_comp
+train	5216	0	8	is	enhanced	In contrast, development into NK cells in an FTOC is enhanced.	merge_leaf
+train	5249	1	8	was	known	The cause of the sinking was not known but officials said the boat had a hole in the stern and no lifejackets .	merge_leaf
+train	5319	1	3	' m	honored	"I 'm honored and humbled to be receiving this award . """	merge_leaf
+train	5348	3	4	is	right	Here it is right here.	merge_chain_head
+train	5386	0	2	is	endemic	It is endemic to Ecuador .	merge_leaf
+train	5496	3	4	' s	cold	Typically it's cold.	merge_leaf
+train	5583	2	6	is	over	We don ' t think that the fighting is over yet , and so there are still options available to the regime , including the use of weapons of mass destruction .	merge_leaf
+train	5730	5	8	was	drunk	But customs authorities said the passenger was drunk and died of loss of blood from a deep cut in his wrist after he hit a glass sheet .	merge_leaf
+train	5794	3	4	be	silent	Say something good , or be silent .	merge_leaf
+train	5921	0	4	' s	limited	And therefore it 's limited .	merge_leaf
+train	6067	0	15	is	essential	Formation of the NFAT -1 transcriptional complex on the IL-2 promoter is essential for IL-2 transcription .	merge_leaf
+train	6092	0	2	is	endemic	It is endemic to Indonesia .	merge_leaf
+train	6242	11	14	are	equal	"According to the principle of "" when all things are equal , better takes precedence and moderately liberalize "" , Tianjin will adjust relevant policies so as to strengthen attractiveness to Taiwanese businessmen ."	merge_leaf
+train	6377	0	3	were	groundless	Those fears were groundless , as she had been simply held up by unfavourable weather .	merge_leaf
+train	6599	0	2	is	yellowish	It is yellowish in colour , due to the use of turmeric , and occasionally contains kalonji and curry leaves .	merge_leaf
+train	6641	0	5	are	erroneous	Earlier reports from India are erroneous although it is likely to occur there .	merge_leaf
+train	6647	0	14	' s	just	Well then I mean like it 's just so her to do that that I just think it 's hysterical .	leave	idiom `it's just so her to...`; `just so her` is not a simple adjectival complement
+train	6647	8	10	' s	hysterical	Well then I mean like it 's just so her to do that that I just think it 's hysterical .	merge_leaf
+train	6789	13	15	is	up	I talked to a friend currently serving in Iraq last night and he says morale is up and the presence of troops is a positive thing .	merge_leaf
+train	7009	8	18	was	normal	Prolonged corticosteroid treatment resulted in down-regulation of GcR , while the mean level of GcR in Cushing's disease was normal.	merge_leaf
+train	7052	13	17	is	dispensable	In lymphoid cells , only the upstream sequences are required for transactivation by the Z/R combination, and the AP-1 site is dispensable.	merge_leaf
+train	7209	0	9	is	Downtown	The University of Detroit Mercy School of Law is Downtown across from the Renaissance Center .	merge_leaf
+train	7263	16	20	was	completed	Unreleased The film is yet to have a theatrical release as the makers abandoned the project due to creative differences even though the film was almost completed .	merge_leaf
+train	7333	5	6	are	pessimistic	Even commentators who are pessimistic about long-term technological unemployment invariably consider innovation to be an overall benefit to society , with J. S. Mill being perhaps the only prominent western political economist to have suggested prohibiting the use of technology as a possible solution to unemployment .	merge_leaf
+train	7405	16	19	were	underway	The South China Morning Post quoted Hong Kong Jockey Club Chief Executive Lawrence Wong as saying the discussions were underway , but no price was reported .	merge_leaf
+train	7405	20	23	was	reported	The South China Morning Post quoted Hong Kong Jockey Club Chief Executive Lawrence Wong as saying the discussions were underway , but no price was reported .	merge_leaf
+train	7433	10	21	are	closer than ever	Israeli - Palestinian peace talks have ended in Egypt with a statement declaring the two sides are closer than ever to a final agreement .	split_comp
+train	7567	6	15	is	required	Transient transfection studies demonstrate further that TCR -stimulated activation of the Ras signaling pathway is required for optimal activation of CD95 ligand .	merge_leaf
+train	7806	15	19	were	injured	In 2010 , 21 people died because of a mass panic at the Love Parade ; over 500 people were injured .	merge_leaf
+train	7816	0	4	were	more	Other analysts were more bullish , even though the company is expected to shrink to slightly more than half its current size in sales .	merge_chain_head
+train	7960	1	5	is	bright	People 's outlook is bright ; if your everyday character is such that you are always thinking of other people , your things ca n't be too shoddy .	merge_leaf
+train	8063	17	14	' re	distracted	other parts of the global terror network may view this as a moment to strike , thinking that we ' re distracted .	merge_leaf
+train	8264	1	10	are	activated	The mechanisms of hormone-receptor interactions in hypertension are activated: the number of glucocorticoid and mineralocorticoid binding sites grows in hypertensive patients .	merge_leaf
+train	8322	1	8	were	enriched	CD38+ cells committed towards this lineage were enriched and a population of these cells treated with dihydroxyvitamin D3 to induce neutrophil maturation.	merge_leaf
+train	8533	16	19	are	enormous	The terrain and climate of the Congo Basin present serious barriers to road and rail construction , and the distances are enormous across this vast country .	merge_leaf
+train	8770	1	19	is	reviewed	The ability of H2O2 or other ROS to induce T cell signals and functional responses by these two mechanisms is reviewed and the specific response of NF-kappaB to redox changes in T cells is examined.	merge_leaf
+train	8770	20	32	is	examined	The ability of H2O2 or other ROS to induce T cell signals and functional responses by these two mechanisms is reviewed and the specific response of NF-kappaB to redox changes in T cells is examined.	merge_leaf
+train	9054	19	21	is	frozen	there ' s no one economic statistics to point to a downturn , it ' s an overall feeling , a psychological feeling that everything is frozen , everything is on hold .	merge_leaf
+train	9239	6	15	was	known	By Wednesday , the whereabouts of the eight hostages was still not known , the sources said .	merge_leaf
+train	9431	7	15	was	released	"In May 1968 , the band split up for good , but to fulfill a contractual obligation , a final studio album , "" Last Time Around "" , was released ."	merge_leaf
+train	9590	4	9	is	sufficient	Here, we show that ectopic expression of GATA-3 is sufficient to drive IL-5 but not IL-4 gene expression .	merge_leaf
+train	9748	0	2	was	lost	Time was lost .	merge_leaf
+train	9750	3	6	is	unusable	Central Command has determined that Baghdad Airport is unusable for normal air operations .	merge_leaf
+train	9752	0	8	are	developed	In addition to public performances and exhibitions also own publications are developed .	merge_leaf
+train	9763	3	12	is	unlikely	""" It is unlikely that Norilsk will pay these debts in the near-term -- the company will remain a debtor in the near future , "" Chernyshev said ."	merge_leaf
+train	9893	12	20	are	genuine	He maintains his political independence as well as any pundit and this donation affirms that the words he ' s always used to describe his commitment to UVA are genuine .	merge_leaf
+train	9895	0	9	are	practiced	More traditional sports such as camel racing , falconry and equestrianism are still practiced .	merge_leaf
+train	9955	4	5	was	just	She was just down here too.	merge_chain_head
+train	10061	8	10	is	better	oh and please say y one is better thx!!!!!!	merge_leaf
+train	10155	0	3	was	unsuccessful	The search was unsuccessful , but they did discover the Yass River and it is surmised that they would have set foot on part of the future territory .	merge_leaf
+train	10157	0	2	are	fourth	They are fourth in the table .	merge_leaf
+train	10195	28	25	were being	realised	SBC Warburg issued an update on the property sector on Thursday , saying that most of the predictions it made at the start of the year were being realised .	merge_leaf
+train	10228	13	17	is	found	Analysts predict Santa Fe will go to the highest bidder , and that if a rival buyer is found , Newmont may not be able to match its offer .	merge_leaf
+train	10280	11	16	were	destroyed	Moslems were driven from the village during the 43- month Bosnian war and most of their houses were destroyed .	merge_leaf
+train	10347	0	11	was	noted	A less pronounced reduction in lambda L chain and microH chain was also noted.	merge_leaf
+train	10415	10	20	is	unknown	Although the exact mechanism by which apoptosis occurs in lymphocytes is unknown many biochemical and molecular changes have been shown to occur in these cells in response to glucocorticoids .	merge_leaf
+train	10438	0	3	was	false	The charge was false .	merge_leaf
+train	10559	0	7	was	unknown	The total number of victims was still unknown .	merge_leaf
+train	10677	6	9	were	killed	Algerian security forces said in a statement that two people were killed and six were wounded when a home-made bomb ripped through a restaurant in the coastal town of Staoueli .	merge_leaf
+train	10677	10	27	were	wounded	Algerian security forces said in a statement that two people were killed and six were wounded when a home-made bomb ripped through a restaurant in the coastal town of Staoueli .	merge_leaf
+train	10704	4	2	' s	removed	And it ' s removed .	merge_leaf
+train	10712	14	17	is	terminal	He has his hand amputated to prevent the cancer 's spread , only to learn it has already metastasized and his condition is terminal .	merge_leaf
+train	10757	11	13	was	illegal	The government had been threatening to fire the workers since the strike began on Tuesday , saying it was illegal .	merge_leaf
+train	10817	9	13	is	clumsy	Although a small turtle is clumsy on the beach , once in the sea , it becomes agile and free .	merge_leaf
+train	10899	3	4	was	all	At first it was all cool and all.	merge_chain_head
+dev	241	17	6	' m	proud	we call him mr . aziz , and i ' m proud of him , says this former traffic cop .	merge_leaf
+dev	342	0	6	are	other	There are other known myosin light-chain kinase enzymes .	leave	existential `there be`; complement is the existent NP modifier chain
+dev	357	7	10	is	unsafe	Critics in non - nuclear Austria argue the plant is unsafe and demand that it be shut down , but Czech authorities insist the plant is safe .	merge_leaf
+dev	410	0	10	is	unclear	The mechanism by which TGF-beta inhibits Ig chain synthesis is unclear although it does not involve inhibition of the binding of NF-kappa B or Oct-2 to their respective target sequences.	merge_leaf
+dev	413	0	11	is	known	The importance of the internal ATGs to Rex function is not known.	merge_leaf
+dev	687	0	6	is	apparent	Huang 's tender - heartedness is apparent to the reader of his work .	merge_leaf
+test	20	9	10	was	patient	He was patient and adapted when everything didn't go according to schedule on my wedding day.	merge_leaf
+test	44	1	3	' s	guilty	And it's guilty:	merge_leaf
+test	92	14	15	being	paid	In August of that year he was moved to Cortona but protested about the delay in being paid .	merge_leaf
+test	103	7	11	was	that	Well it seems like the DA did n't seem to think that was that big a deal today .	leave	degree-marked NP `that big a deal`, not a simple predicative adjective
+test	108	0	6	are	evergreen	The majority of the species are evergreen , but the handful of species adapted to cold winters are deciduous .	merge_leaf
+test	108	7	16	are	deciduous	The majority of the species are evergreen , but the handful of species adapted to cold winters are deciduous .	merge_leaf
+test	157	0	24	is	summarized	Finally, the status of our current knowledge concerning the roles of transcription factors in the commitment to erythroid , myeloid and lymphoid cell types is summarized.	merge_leaf
+test	201	6	22	were	more pronounced	Cell cycle analysis showed shifts in the distribution of cells from G1 to S phase , which were more pronounced after cadmium treatment .	split_comp
+test	417	0	2	is	north - west	It is north-west of the city of Whangarei .	merge_leaf
+test	482	11	14	were	dissolved	Since 1963 museum as division was annexed to Museum of Croatian History and after few years that division were dissolved .	merge_leaf
+test	497	17	20	are	plain	There are no mint marks on any of the coins ( all minted at the Philadelphia Mint ) and the edges are plain on most half cents .	merge_leaf
+test	548	0	20	was	observed	A difference (P < 0.02) in the distribution of the RFLP genotypes between Irish and German control populations was also observed.	merge_leaf
+test	651	3	4	' s	ok	Yes it's ok.	merge_leaf
+test	726	1	8	is	illegal	( Intercepting other people 's private conversations is illegal and punishable by five years in prison and fines of $ 10,000 . )	merge_leaf
+test	747	0	2	were	injured	at least 70 were injured .	merge_leaf
+test	822	1	8	are	known	"No particular threats to this bird are known and the population is believed to be stable , so the International Union for Conservation of Nature has assessed its conservation status as being of "" least concern "" ."	merge_leaf
+test	849	0	11	are	discussed	The regulatory mechanisms of the human and murine TNF genes are discussed.	merge_leaf
+test	968	6	10	was	unchanged	The huge services sector added 99,000 , but growth in manufacturing was unchanged , suggesting sluggish demand for factory labor .	merge_leaf

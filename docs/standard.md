@@ -339,6 +339,66 @@ give/FactualPredicator
 
 在现有 JSONL serialization 中，谓词论元有时会指向 determiner、modifier、punctuation、`Modification`、`Expression`、`Ref` 等 wrapper node。若对应实体或事实可通过 `DESC(v)` 清晰恢复，这属于合法结构变体；只有 descendant subgraph 无法恢复核心论元时，才应判为 PFA 或语义错误。
 
+### 6.1.1 系词、`be + prep` 与 `there be`
+
+为减少历史数据中 copula 结构的合并/拆分不一致，以下结构按统一原则处理：
+
+1. **简单系表结构合并为谓词短语**。`is true`、`was interesting`、`are happy`、`be ready` 等简单 `be + adjective/state complement` 应作为一个 `FactualPredicator`。主语仍以 `pred.arg.1` 显式连接；该简单状态补语不再另作 `pred.arg.2`。例如：
+
+```text
+it is true
+
+is true/FactualPredicator
+  pred.arg.1 -> it
+```
+
+2. **形容词/状态补语内部有副词修饰时，副词修饰必须可恢复**。若简单系表结构中出现修饰补语的副词，如 `very true`、`really interesting`、`fairly basic`、`so happy`，应避免把副词与形容词无结构地压成不可分析片段。推荐做法是将整个 `be + complement` 保持为事实谓词，同时拆出副词对形容词/状态核心的修饰，或用等价结构确保 `DESC` 可恢复副词 scope。例如：
+
+```text
+that is fairly basic
+
+is basic/FactualPredicator
+  pred.arg.1 -> that
+fairly/ModificationalConstant
+  as:modification -> is basic
+```
+
+若实现中将 `is fairly basic` 合并为一个 `FactualPredicator`，但无法恢复 `fairly` 修饰 `basic` 而非整个外层事实，应视为过度合并。
+
+3. **`be` 直接加介词谓词时合并**。若 `be` 与介词连续构成状态/位置/关系谓词，如 `is in`、`was at`、`is about`、`are against`、`be with`，应合并为一个 `FactualPredicator`，介词宾语作为该合并谓词的论元。例如：
+
+```text
+he is in Houston
+
+is in/FactualPredicator
+  pred.arg.1 -> he
+  pred.arg.2 -> Houston
+```
+
+4. **`be` 与介词之间有其他成分时，介词必须单独拆出**。若 `be` 和介词之间插入副词、程度词、否定、补语或其他成分，如 `is clearly in trouble`、`is not in Houston`、`was already at home`、`is all about this`，不得把整段无结构地合并为一个 predicate。应将 `be` 或可恢复的状态谓词作为主体，并将介词短语作为单独 `ModificationalFunctor`、`Modification` 或等价结构挂接，使插入成分和介词宾语的 scope 可恢复。
+
+5. **`there be` 存在句拆分，`there` 作为 `pred.arg.1`**。`there is/are/was/were ...` 不应把 `there be` 合并为一个不可分析谓词。`be` 应作为 `FactualPredicator`，`there` 作为 `pred.arg.1`，存在物或其可恢复 descendant subgraph 作为 `pred.arg.2`。例如：
+
+```text
+there are bears
+
+are/FactualPredicator
+  pred.arg.1 -> there
+  pred.arg.2 -> bears
+```
+
+若存在物内部有修饰、限定、相对从句或并列结构，应保留其内部结构，并让 `pred.arg.2` 指向可恢复完整存在物的节点或 descendant subgraph。
+
+常见错误：
+
+| 错误 | 严重程度 |
+|---|---|
+| 简单系表结构被拆成 `be -> pred.arg.2 -> adjective`，且无其他结构需求 | minor / consistency error |
+| `is very true` 等把副词和补语压成不可恢复的单节点 | major |
+| `be` 直接接介词谓词却拆成不必要 wrapper，导致关系谓词不清 | minor / major |
+| `be` 与介词之间有插入成分却整体合并，导致插入成分或 PP scope 不可恢复 | major |
+| `there be` 合并为不可分析谓词，未把 `there` 作为 `pred.arg.1` | major |
+
 `pred.arg.4` 与状语修饰必须区分：
 
 1. 若成分是谓词语义价的一部分，或表达宾补、结果状态、被谓词选择的非限定补足语，可作为 `pred.arg.4`。例如 `painted the wall red` 中 `red`、`elected him president` 中 `president`、`attempt to leave` 中 `to leave`。
@@ -1469,16 +1529,17 @@ Return the evaluation JSON only.
 5. 所有 node type 和 edge label 必须合法或可规范化。
 6. 主事实谓词必须存在；但纯 structured fragment、标题、专名、field label、UI fragment 等无事实谓词样本按 fragment 规则处理，不得虚构事实谓词。
 7. 核心 predicate arguments 不得缺失；predicate node 原则上必须补足 `pred.arg.1`，除非原句确实无对应成分、该谓词语义上不需要 `arg1`，或文本省略且无法由结构恢复。
-8. 相对从句必须有内部谓词结构；显式 wh-word / `that` / 指代词存在时必须有 `ref/as:ref` 或等价 `Ref` 节点结构，零关系从句不得凭空添加 `Ref`。
-9. 属性结构必须明确区分 entity 与 value。
-10. 复杂修饰结构不得因过度压平而失去 head 和 scope。
-11. 所有修饰结构必须检查 head、scope 和层级；前置修饰成分出现时应作为高风险情况重点检查。
-12. 冗余 `Modification` 应在不损失 recoverability 的前提下去除；不得用 `Modification` 包装已经自足的逻辑、并列、属性或指代关系。
-13. 评估论元、修饰和 wrapper 结构时必须依据 `DESC(v)` 的可恢复性；不得仅因 `SELF(v)` 是标点、修饰词、`Modification`、`Ref` 或其他 wrapper 就判错。
-14. 多重修饰的链式嵌套必须符合语义亲疏和 scope 顺序；`DESC(v)` 可恢复不能豁免近层/远层修饰内外顺序错误。
-15. header、speaker label、field label、key-value label、UI fragment 等文档元数据片段不得进入正文核心 PFA；应作为 discourse metadata 或局部 boundary 保留。
-16. 纯 structured fragment 可以用 `List`、`Expression`、`Attribute` 等结构作为 root，不要求普通句子的 `FactualPredicator`。
-17. 多词专名、标题和名词性 fragment 不得被强行补成 copula/事实命题；其内部结构只需能恢复 entity/title 及必要限定关系。
+8. 简单系表结构应合并为 `be + adjective/state complement` 谓词；补语内部副词修饰必须拆出并保持 scope 可恢复。`be` 直接接介词谓词时合并；`be` 与介词之间有其他成分时介词必须拆出；`there be` 必须拆分并以 `there` 作 `pred.arg.1`。
+9. 相对从句必须有内部谓词结构；显式 wh-word / `that` / 指代词存在时必须有 `ref/as:ref` 或等价 `Ref` 节点结构，零关系从句不得凭空添加 `Ref`。
+10. 属性结构必须明确区分 entity 与 value。
+11. 复杂修饰结构不得因过度压平而失去 head 和 scope。
+12. 所有修饰结构必须检查 head、scope 和层级；前置修饰成分出现时应作为高风险情况重点检查。
+13. 冗余 `Modification` 应在不损失 recoverability 的前提下去除；不得用 `Modification` 包装已经自足的逻辑、并列、属性或指代关系。
+14. 评估论元、修饰和 wrapper 结构时必须依据 `DESC(v)` 的可恢复性；不得仅因 `SELF(v)` 是标点、修饰词、`Modification`、`Ref` 或其他 wrapper 就判错。
+15. 多重修饰的链式嵌套必须符合语义亲疏和 scope 顺序；`DESC(v)` 可恢复不能豁免近层/远层修饰内外顺序错误。
+16. header、speaker label、field label、key-value label、UI fragment 等文档元数据片段不得进入正文核心 PFA；应作为 discourse metadata 或局部 boundary 保留。
+17. 纯 structured fragment 可以用 `List`、`Expression`、`Attribute` 等结构作为 root，不要求普通句子的 `FactualPredicator`。
+18. 多词专名、标题和名词性 fragment 不得被强行补成 copula/事实命题；其内部结构只需能恢复 entity/title 及必要限定关系。
 
 以下规则建议作为 soft constraints：
 
