@@ -627,6 +627,7 @@ class WordLinguaInference:
         rel_logits = out["rel_logits"][0, :num_nodes, :num_nodes, :].float().cpu().numpy()
         node_type_logits = out["node_type_logits"][0, :num_nodes, :].float().cpu().numpy()
         cow_logits = out["child_of_whether_logits"][0, :num_nodes, :].float().cpu().numpy()
+        is_root_logits = out["is_root_logits"][0, :num_nodes, :].float().cpu().numpy()
         
         # Get predictions - pass integer IDs to decoder (it looks them up in ID2NODE_TYPE)
         node_type_preds = np.array([int(np.argmax(node_type_logits[i])) for i in range(num_nodes)])
@@ -639,6 +640,7 @@ class WordLinguaInference:
             rel_logits=rel_logits,
             node_type_preds=node_type_preds,
             child_of_whether_preds=np.array([int(c) for c in cow_preds]),
+            is_root_logits=is_root_logits,
         )
         
         # Extract edges from decoded graph
@@ -781,6 +783,7 @@ class WordLinguaInference:
                 rel_logits = out["rel_logits"][b_idx, :num_nodes, :num_nodes, :].float().cpu().numpy()
                 node_type_logits = out["node_type_logits"][b_idx, :num_nodes, :].float().cpu().numpy()
                 cow_logits = out["child_of_whether_logits"][b_idx, :num_nodes, :].float().cpu().numpy()
+                is_root_logits = out["is_root_logits"][b_idx, :num_nodes, :].float().cpu().numpy()
                 
                 # Get predictions - pass integer IDs to decoder (it looks them up in ID2NODE_TYPE)
                 node_type_preds = np.array([int(np.argmax(node_type_logits[i])) for i in range(num_nodes)])
@@ -793,6 +796,7 @@ class WordLinguaInference:
                     rel_logits=rel_logits,
                     node_type_preds=node_type_preds,
                     child_of_whether_preds=np.array([int(c) for c in cow_preds]),
+                    is_root_logits=is_root_logits,
                 )
                 
                 # Extract edges from decoded graph

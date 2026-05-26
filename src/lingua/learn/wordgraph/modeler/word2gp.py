@@ -10,11 +10,118 @@ logger = logging.getLogger(__name__)
 
 from lingua.utils.topology_sorter import LinguaGraphTopologySorter
 
+HIERARCHY_EDGE_LABELS = {"@upper", "@lower"}
+
+
+def split_edge_label(label: str):
+    return [edge_label for edge_label in str(label).split("+") if edge_label]
+
+
+def strip_hierarchy_edge_components(lingua_graph: GPGraph):
+    """Remove word-lingua hierarchy hints from final Lingua edge labels."""
+    updated = False
+
+    for parent, edge, child in list(lingua_graph.edges()):
+        edge_labels = split_edge_label(edge.label)
+        remaining_edge_labels = [
+            edge_label for edge_label in edge_labels
+            if edge_label not in HIERARCHY_EDGE_LABELS
+        ]
+
+        if len(remaining_edge_labels) == len(edge_labels):
+            continue
+
+        confidence = edge.confidence
+        lingua_graph.remove_relation(parent, child)
+        if remaining_edge_labels:
+            lingua_graph.add_relation(
+                parent,
+                child,
+                "+".join(remaining_edge_labels),
+                confidence=confidence,
+            )
+        updated = True
+
+    return lingua_graph, updated
+
+
+def _node_sort_key(lingua_graph: GPGraph, node: GPGNode):
+    if isinstance(node, GPGPhraseNode):
+        starts = [
+            span[0]
+            for span in node.spans
+            if isinstance(span, tuple) and isinstance(span[0], int)
+        ]
+        start = min(starts) if starts else 10**9
+    else:
+        start = 10**9
+    return (start, str(node.ID))
+
+
+def choose_primary_root(lingua_graph: GPGraph, roots):
+    """Pick the root to preserve when a decoded graph has multiple roots."""
+    root_scores = []
+    for node in roots:
+        try:
+            descendant_count = len(nx.descendants(lingua_graph.g, node.ID))
+        except Exception:
+            descendant_count = 0
+        is_punctuation = int(getattr(node, "pos", None) == "PunctuationalConstant")
+        root_scores.append(
+            (
+                -is_punctuation,
+                -descendant_count,
+                *_node_sort_key(lingua_graph, node),
+                node,
+            )
+        )
+    return min(root_scores)[-1]
+
+
+def ensure_single_rooted_dag(lingua_graph: GPGraph, fallback_label="nonsense"):
+    """
+    Ensure final converted Lingua output is a single-root DAG.
+
+    The neural decoder can occasionally leave several roots after word-lingua
+    hierarchy hints are consumed. `nonsense` is used only as a legal structural
+    fallback so the invalid topology stays visible as a low-information edge.
+    """
+    if lingua_graph.number_of_nodes() == 0:
+        return lingua_graph, False
+
+    if not nx.is_directed_acyclic_graph(lingua_graph.g):
+        raise ValueError("Converted Lingua graph is not a DAG")
+
+    roots = [node for node in list(lingua_graph.nodes()) if lingua_graph.g.in_degree(node.ID) == 0]
+    if len(roots) <= 1:
+        lingua_graph.root_ = None
+        return lingua_graph, False
+
+    primary_root = choose_primary_root(lingua_graph, roots)
+    repair_info = {
+        "type": "multiple_roots",
+        "fallback_label": fallback_label,
+        "primary_root": lingua_graph.node_text(primary_root),
+        "extra_roots": [],
+    }
+
+    for root in sorted((r for r in roots if r != primary_root), key=lambda n: _node_sort_key(lingua_graph, n)):
+        if nx.has_path(lingua_graph.g, root.ID, primary_root.ID):
+            raise ValueError("Converted Lingua graph has roots that would create a cycle if repaired")
+        if not lingua_graph.has_edge(primary_root, root):
+            lingua_graph.add_relation(primary_root, root, fallback_label)
+            repair_info["extra_roots"].append(lingua_graph.node_text(root))
+
+    lingua_graph.meta.setdefault("word2gp_repairs", []).append(repair_info)
+    lingua_graph.root = primary_root
+
+    return lingua_graph, True
+
 
 def edge2children(lingua_graph: GPGraph, visiting_node: GPGNode):
     edge2children_map = defaultdict(list)
     for child, edge in lingua_graph.children(visiting_node):
-        labels = tuple(edge.label.split("+"))
+        labels = tuple(split_edge_label(edge.label))
         # Compound labels are allowed (the forward transform uses "+" to preserve
         # multiple relations between the same node pair).
         # if len(labels) > 1 and any(label.startswith("as:") for label in labels[1:]):
@@ -35,15 +142,16 @@ def safe_remove_aux_relation(lingua_graph: GPGraph, parent: GPGNode, child: GPGN
     edge = lingua_graph.get_edge(parent, child)
     if edge is None:
         return
-    edge_labels = edge.label.split("+")
+    edge_labels = split_edge_label(edge.label)
     if aux_label not in edge_labels:
         return
     edge_labels.remove(aux_label)
 
+    confidence = edge.confidence
     lingua_graph.remove_relation(parent, child)
     if edge_labels:
         new_edge_label = "+".join(edge_labels)
-        lingua_graph.add_relation(parent, child, new_edge_label)
+        lingua_graph.add_relation(parent, child, new_edge_label, confidence=confidence)
 
 def get_this_layer_offsprings(lingua_graph: GPGraph, target_node: GPGNode, visited=None):
 
@@ -71,7 +179,7 @@ def restore_reversed_edges_in_this_layer(lingua_graph: GPGraph, source_node: GPG
         if child not in this_layer_offsprings:
             continue
 
-        edge_labels = edge.label.split("+")
+        edge_labels = split_edge_label(edge.label)
         remained_edges = []
         reversed_edges = []
         for edge_label in edge_labels:
@@ -164,7 +272,7 @@ def find_aux_chain(lingua_graph: GPGraph, target_node: GPGNode):
         assert aux_child_node is not None 
         
         edge = lingua_graph.get_edge(target_node, aux_child_node)
-        edge_labels = edge.label.split("+")
+        edge_labels = split_edge_label(edge.label)
 
         assert edge_labels[0].startswith("@")
 
@@ -181,7 +289,7 @@ def find_aux_chain(lingua_graph: GPGraph, target_node: GPGNode):
                 assert next_elem_node is not None 
 
                 this_edge = lingua_graph.get_edge(current_node, next_elem_node)
-                this_edge_labels = this_edge.label.split("+")
+                this_edge_labels = split_edge_label(this_edge.label)
                 if this_edge_labels[0] == aux_edge_label:
                     nex_elem_node_parents = set([n for n, e in  lingua_graph.parents(next_elem_node)])
                     current_node_parents = set([n for n, e in lingua_graph.parents(current_node)])
@@ -230,7 +338,7 @@ def find_aux_chain(lingua_graph: GPGraph, target_node: GPGNode):
 #             lingua_graph.add_relation(visiting_node, child, new_edge_label)
 
 
-def lower_edge_to_node_hierarchy(lingua_graph: GPGraph):
+def lower_edge_to_node_hierarchy(lingua_graph: GPGraph, debug=False):
 
     for current_node in list(lingua_graph.nodes()):
         
@@ -251,26 +359,33 @@ def lower_edge_to_node_hierarchy(lingua_graph: GPGraph):
             hierarchy_graph = nx.DiGraph()
             # Convert to list before iterating to avoid 'dictionary changed size during iteration'
             for start, edge, end in list(sub_graph.edges()):
-                edge_labels = edge.label.split("+")
+                edge_labels = split_edge_label(edge.label)
                 if "@lower" in edge_labels:
                     hierarchy_graph.add_edge(start.ID, end.ID)
                     remaining_edge_label = "+".join([edge_label for edge_label in edge_labels if edge_label != "@lower"])
 
+                    confidence = edge.confidence
                     lingua_graph.remove_relation(start, end)
                     if remaining_edge_label:
-                        lingua_graph.add_relation(start, end, remaining_edge_label)
+                        lingua_graph.add_relation(start, end, remaining_edge_label, confidence=confidence)
                 elif "@upper" in edge_labels:
                     hierarchy_graph.add_edge(end.ID, start.ID)
                     remaining_edge_label = "+".join([edge_label for edge_label in edge_labels if edge_label != "@upper"])
+                    confidence = edge.confidence
                     lingua_graph.remove_relation(start, end)
                     if remaining_edge_label:
-                        lingua_graph.add_relation(start, end, remaining_edge_label)
+                        lingua_graph.add_relation(start, end, remaining_edge_label, confidence=confidence)
                 else:
                     raise Exception(f"Unsupported edge label: {edge.label}")
                 
             current_node.aux_hierarchy = list(nx.topological_sort(hierarchy_graph))
 
-        print(f"lower_edge_to_node_hierarchy: {lingua_graph.node_text(current_node)} -{current_node.aux_hierarchy}")
+        if debug:
+            logger.debug(
+                "lower_edge_to_node_hierarchy: %s - %s",
+                lingua_graph.node_text(current_node),
+                current_node.aux_hierarchy,
+            )
 
 
 def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
@@ -289,7 +404,7 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
     """
     
 
-    lower_edge_to_node_hierarchy(lingua_graph)
+    lower_edge_to_node_hierarchy(lingua_graph, debug=debug)
 
     updated = False
     update_idx = 0
@@ -302,7 +417,8 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
             continue 
 
         
-        print(f"restore_aux_nodes: {lingua_graph.node_text(visiting_node)} -{aux_chain}")
+        if debug:
+            logger.debug("restore_aux_nodes: %s - %s", lingua_graph.node_text(visiting_node), aux_chain)
 
         previous_tail_node = None 
         current_root = visiting_node
@@ -341,18 +457,29 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
                 
             elif aux_node_label in {"Parataxis", "List", "Expression"}:
 
-                print(f"processing : {lingua_graph.node_text(visiting_node)}")
-                print(f"previous_tail_node: {lingua_graph.node_text(previous_tail_node) if previous_tail_node is not None else None}")
+                if debug:
+                    logger.debug("processing: %s", lingua_graph.node_text(visiting_node))
+                    logger.debug(
+                        "previous_tail_node: %s",
+                        lingua_graph.node_text(previous_tail_node) if previous_tail_node is not None else None,
+                    )
                 children = [current_root] + nodes
                 for node in children:
-                    print(f"child: {lingua_graph.node_text(node)}")
+                    if debug:
+                        logger.debug("child: %s", lingua_graph.node_text(node))
     
                     lingua_graph.add_relation(aux_node, node, "func.arg")
 
                 safe_remove_aux_relation(lingua_graph, visiting_node, nodes[0], symbol_nodelabel2edge[aux_node_label])
                     
                 for prev, next in itertools.pairwise(children):
-                    print(f"remove_aux_relation: {lingua_graph.node_text(prev)} -[{symbol_nodelabel2edge[aux_node_label]}]> {lingua_graph.node_text(next)}")
+                    if debug:
+                        logger.debug(
+                            "remove_aux_relation: %s -[%s]> %s",
+                            lingua_graph.node_text(prev),
+                            symbol_nodelabel2edge[aux_node_label],
+                            lingua_graph.node_text(next),
+                        )
                     safe_remove_aux_relation(lingua_graph, prev, next, symbol_nodelabel2edge[aux_node_label])
                     for new_parent, new_edge_label in restore_reversed_edges_in_this_layer(lingua_graph, prev, next):
                         parents_of_current_root.append(new_parent) 
@@ -362,7 +489,7 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
                 raise Exception(f"Unsupported aux node: label {aux_node_label}, pos {aux_node_pos}")
 
             for child, edge in list(lingua_graph.children(current_root)):
-                edge_labels = edge.label.split("+")
+                edge_labels = split_edge_label(edge.label)
                 if not(any(edge_label.startswith("reverse_") for edge_label in edge_labels)):
                     continue
                 remain_edges =[]
@@ -383,14 +510,18 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
 
             
             this_layer_offsprings = get_this_layer_offsprings(lingua_graph, aux_node)
-            print(f"aux_node: {lingua_graph.node_text(aux_node)}")
-            print(f"this_layer_offsprings: {[lingua_graph.node_text(n) for n in this_layer_offsprings]}")
+            if debug:
+                logger.debug("aux_node: %s", lingua_graph.node_text(aux_node))
+                logger.debug(
+                    "this_layer_offsprings: %s",
+                    [lingua_graph.node_text(n) for n in this_layer_offsprings],
+                )
             for parent in parents_of_current_root:
                 if parent in this_layer_offsprings:
                     continue 
 
                 edge = lingua_graph.get_edge(parent, current_root)
-                edge_labels = edge.label.split("+")
+                edge_labels = split_edge_label(edge.label)
                 
                 lingua_graph.remove_relation(parent, current_root)
                 lingua_graph.add_relation(parent, aux_node, edge_labels[0])
@@ -489,6 +620,7 @@ def wordlingua2lingua(word_lingua_graph: GPGraph, debug=False):
         debug_info = {}
 
     try:
+        updated_any = False
         # Reverse the transformations in opposite order of gp2word.lingua2wordlingua():
         #
         #   gp2word:
@@ -504,17 +636,31 @@ def wordlingua2lingua(word_lingua_graph: GPGraph, debug=False):
 
         # 1) Restore all aux nodes removed by gp2word.remove_aux_nodes()
         lingua_graph, updated = restore_aux_nodes(lingua_graph, debug=debug)
+        updated_any = updated_any or updated
         if debug and updated:
             debug_info["restore_aux_nodes"] = copy.deepcopy(lingua_graph)
 
         # 2) Restore Whether auxiliary nodes
         lingua_graph, updated = restore_whether_aux(lingua_graph, debug=debug)
+        updated_any = updated_any or updated
         if debug and updated:
             debug_info["restore_whether_aux"] = copy.deepcopy(lingua_graph)
 
         lingua_graph, updated = collapse_multi_word_nodes(lingua_graph, debug=debug)
+        updated_any = updated_any or updated
         if debug and updated:
             debug_info["collapse_multi_word_nodes"] = copy.deepcopy(lingua_graph)
+
+        # Final Lingua graphs must not expose word-lingua hierarchy hints.
+        lingua_graph, updated = strip_hierarchy_edge_components(lingua_graph)
+        updated_any = updated_any or updated
+        if debug and updated:
+            debug_info["strip_hierarchy_edge_components"] = copy.deepcopy(lingua_graph)
+
+        lingua_graph, updated = ensure_single_rooted_dag(lingua_graph)
+        updated_any = updated_any or updated
+        if debug and updated:
+            debug_info["ensure_single_rooted_dag"] = copy.deepcopy(lingua_graph)
     
     except Exception as e:
         if debug:
@@ -522,6 +668,6 @@ def wordlingua2lingua(word_lingua_graph: GPGraph, debug=False):
         raise e
     
     if debug:
-        return lingua_graph, updated, debug_info
+        return lingua_graph, updated_any, debug_info
     else:
-        return lingua_graph, updated, {}
+        return lingua_graph, updated_any, {}
