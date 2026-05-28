@@ -222,12 +222,13 @@ Expected key structure:
 
 ```text
 Attribute/AttributePredicator
-  pred.arg.1 -> Location
+  spans -> Location
+  pred.arg.1 -> Missing
   pred.arg.2 -> Expression(Houston, ,, Texas, USA)
   punctuation -> :
 ```
 
-Reason: `Location` is a field label, not a factual predicate. The value is the location expression associated with that field.
+Reason: `Location` is the field label and therefore the lexical `AttributePredicator` itself, not `pred.arg.1`. The value is the location expression associated with that field; the external host is missing.
 
 ## Correct: Attendance Field Fragment
 
@@ -241,12 +242,13 @@ Expected key structure:
 
 ```text
 Attribute/AttributePredicator
-  pred.arg.1 -> Attendance
+  spans -> Attendance
+  pred.arg.1 -> Missing
   pred.arg.2 -> Expression(15, ,, 150)
   punctuation -> :
 ```
 
-Reason: `Attendance` is the field label and `15,150` is its value. The value should not be the only attribute argument.
+Reason: `Attendance` is the field label and should be the lexical `AttributePredicator`; `15,150` is its value. Do not create an `Attribute` symbol node and then add `attribute -> Attendance`.
 
 ## Correct: Standalone Date-Time Fragment
 

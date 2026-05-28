@@ -170,7 +170,7 @@ R-FRAG-03: Parallel headers, table columns, menu items, and list-like labels sho
 
 R-FRAG-04: Page refs, scores, dates, times, time ranges, phone numbers, addresses, filenames, percentages, money, model codes, and similar symbol strings should be recoverable as `ExpressionFunctor`/`Expression` units when they are not ordinary sentences.
 
-R-FRAG-05: Field or key-value records should distinguish key/field label from value, usually with `AttributePredicator`/`Attribute` or equivalent low-information metadata structure. Do not represent a non-predicative field label such as `Email`, `Location`, `Attendance`, `Pin #`, `Job ID`, `DATE`, `Game N`, or `Preseason Game N` as a normal `FactualPredicator` merely to connect it to the value.
+R-FRAG-05: Field or key-value records should distinguish key/field label from value. When the field label is explicit, the field label token(s) must be the lexical `AttributePredicator`; its value is `pred.arg.2`, and a missing external host is represented as `pred.arg.1 -> Missing`. Do not create `Attribute(spans="Attribute") --attribute--> field_label`, and do not represent a non-predicative field label such as `Email`, `Location`, `Attendance`, `Pin #`, `Job ID`, `DATE`, `Game N`, or `Preseason Game N` as a normal `FactualPredicator` merely to connect it to the value.
 
 R-FRAG-06: Header, speaker label, field label, key-value label, or UI metadata must not enter the core predicate-argument frame of nearby body text unless the text explicitly makes it part of the fact.
 

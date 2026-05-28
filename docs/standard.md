@@ -126,7 +126,7 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | Symbol label | 用途 |
 |---|---|
 | `Apposition` | 同位、别名、再描述关系，如 `John, a doctor`。 |
-| `Attribute` | 属性-值结构，尤其是隐式属性表达。 |
+| `Attribute` | 属性-值结构的无词面 symbol node，仅用于属性名未显式出现或无法由文本 token 承载的隐式属性关系。 |
 | `Copula` | 系词性 predication。 |
 | `Discourse` | 话语标记、插入语、话语层连接。 |
 | `Expression` | 复合表达，如范围、公式、多 token 符号表达。 |
@@ -143,7 +143,7 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | Node type | 用途 |
 |---|---|
 | `FactualPredicator` | 事实、事件、普通子句谓词。 |
-| `AttributePredicator` | 属性谓词，如 `battery capacity`。 |
+| `AttributePredicator` | 属性谓词或显式字段名，如 `battery capacity`、`Email`、`Attendance`。 |
 | `AppositionalPredicator` | 同位谓词。 |
 | `LogicalPredicator` | 逻辑、时间、因果、条件等关系谓词，如 `if`、`because`、`therefore`。 |
 | `ReferentialPredicator` | 指代结构谓词。 |
@@ -174,7 +174,7 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | `variable` | 被修饰、被约束或被操作的对象。 |
 | `body` | 修饰体、约束体或操作体。 |
 | `modification` | 修饰关系。 |
-| `attribute` | 属性关系。 |
+| `attribute` | `Attribute` 关系的边级简写，语义上等价于显式 `Attribute` 结构的一次属性连接；不得和同一个 `Attribute` / `AttributePredicator` 节点叠加使用，也不得在一个 `Attribute` symbol node 下再用 `attribute` 边重复挂载该节点的字段名。 |
 | `appositive` | 同位关系。 |
 | `ref` | 指代关系。 |
 | `discourse` | 话语关系。 |
@@ -693,10 +693,12 @@ Expression
 | 角色 | 推荐边/表示 | 说明 |
 |---|---|---|
 | attribute bearer / host entity | `pred.arg.1` | 被赋予属性的实体、记录、对象或上下文 host。 |
-| attribute name / field label | `attribute` 边，或 lexical `AttributePredicator` 自身 | 属性名，如 `Email`、`Tel`、`Job Title`、`Attendance`。 |
+| attribute name / field label | lexical `AttributePredicator` 自身 | 属性名，如 `Email`、`Tel`、`Job Title`、`Attendance`。 |
 | attribute value | `pred.arg.2` | 属性值，如 email address、电话号码、职位值、人数值。 |
 
-当使用 symbol node `Attribute` 表示属性关系时，若属性名显式出现，应使用 `attribute -> 属性名节点`；若属性名本身被建成 lexical `AttributePredicator`，则该节点自身承载 attribute name，此时可以不再额外添加 `attribute` 边。
+显式属性名必须由 lexical `AttributePredicator` 自身承载：也就是说，`AttributePredicator` 的 `spans` 应直接覆盖 `Email`、`Tel`、`Job Title`、`Attendance` 等字段名 token。不得创建一个 `spans="Attribute"` 的 symbol node，再用 `attribute -> field label` 把字段名挂回去；这会把同一个属性关系表达两次。
+
+`Attribute` symbol node 只用于属性名确实未在文本中显式出现，或属性关系是结构性隐含关系的情况。此时 `Attribute` 节点自身就表示“某个未命名属性关系”，不应再添加 `attribute -> Missing`。
 
 显式属性示例：
 
@@ -733,9 +735,9 @@ Attribute
 3. `pred.arg.1` 通常为被赋予属性的实体。
 4. `pred.arg.2` 通常为属性值。
 5. 括号中的身份、类型、别名需根据语义区分 `Attribute` 与 `Apposition`。
-6. `field label: value` 形式中，field label 是 attribute name，不是 `pred.arg.1`。若 host entity 在样本中缺失，应使用 `pred.arg.1 -> Missing`，并用 `attribute -> field label` 表示属性名。
-7. `value field label` 形式（如 `312-666-2372 Tel`）中，`Tel` 是 attribute name，电话号码是 `pred.arg.2`，host 缺失时 `pred.arg.1 -> Missing`。
-8. `entity value` 形式（如 `Kim 713-853-3098`）中，实体是 `pred.arg.1`，电话号码等值是 `pred.arg.2`，attribute name 缺失时可用 `attribute -> Missing`；不得把电话号码当作实体的同位语。
+6. `field label: value` 形式中，field label 是 attribute name，不是 `pred.arg.1`。若 host entity 在样本中缺失，应使用 `field label/AttributePredicator -> Missing` 作为 `pred.arg.1`，并用 `pred.arg.2` 指向字段值。
+7. `value field label` 形式（如 `312-666-2372 Tel`）中，`Tel` 是 lexical `AttributePredicator`，电话号码是 `pred.arg.2`，host 缺失时 `pred.arg.1 -> Missing`。
+8. `entity value` 形式（如 `Kim 713-853-3098`）中，实体是 `pred.arg.1`，电话号码等值是 `pred.arg.2`；若 attribute name 缺失，可用 `Attribute` symbol node 表示隐式属性关系，但不得再添加 `attribute -> Missing`。不得把电话号码当作实体的同位语。
 9. 单独出现的值（如单独电话号码、URL、文件名）若 host 和 attribute name 都缺失，不应强行建成 Attribute，可保留为 `NominalConstant`、`Expression` 或 fragment。
 10. 冒号、破折号等只用于分隔 field label 和 value 时，是 delimiter punctuation，应挂在属性结构上作为 `punctuation`，不应作为 attribute name、host 或 value；除非该标点还明确 close 整个结构，否则不应上提为 root。
 
@@ -747,6 +749,8 @@ Attribute
 | 实体和值反了 | major |
 | 把 field label 当作 `pred.arg.1` host | major |
 | 把 `entity value` 误标为 Apposition | major |
+| 用 `Attribute` symbol node 加 `attribute -> field label` 重复表示显式字段名 | major |
+| 对隐式属性名添加 `attribute -> Missing` | minor / major |
 | 把 delimiter 冒号当作 host、attribute name 或 value | major |
 | 属性结构遗漏 | major |
 | Attribute 与 Apposition 混淆但语义可恢复 | minor / major |
@@ -1019,7 +1023,7 @@ close/FactualPredicator
 3. metadata 不得作为正文事实谓词的主语、宾语、补语、普通修饰体或逻辑连接词，除非文本明确表达它参与该事实。
 4. `Overview Since 1992, P`、`Biography X was born...`、`History P` 等结构中，`Overview` / `Biography` / `History` 是 header，不应修饰 `Since`、`X` 或 `P` 的核心谓词；正文命题应独立恢复。
 5. 冒号、破折号等分隔符若只是 header 与正文的边界，应作为局部 punctuation / discourse boundary，而不是事实谓词。
-6. 若样本本身是纯 key-value / field-value 记录，没有独立正文谓词，可使用 `AttributePredicator` 或 symbol node `Attribute` 表示该元数据关系；key / field label 对应属性名，value 对应属性值，冒号、破折号仅作为 boundary punctuation。
+6. 若样本本身是纯 key-value / field-value 记录，没有独立正文谓词，应优先用覆盖 key / field label token 的 lexical `AttributePredicator` 表示该元数据关系；只有属性名未显式出现时才使用 symbol node `Attribute`。value 对应属性值，冒号、破折号仅作为 boundary punctuation。
 7. 若 key-value 中缺少被赋予属性的外部实体，不得把字段值提升为 `pred.arg.1` host；字段值始终是 `pred.arg.2`。无法从句内恢复的上下文 host 应用 `Missing` 表示，并在评估中视为低语义信息。
 
 示例：
@@ -1072,7 +1076,7 @@ Chicago, IL 60622
 
 1. 平行字段、列名、菜单项、标题列表可用 `ListFunctor` / `List` 挂接每个项目；项目之间没有事实性 predicate-argument 关系时，不得强行建立谓词。
 2. 页码、编号、比分、战绩、日期时间、时间范围、电话号码、地址、文件名、百分比、货币数值、模型号等常规符号串可用 `ExpressionFunctor` / `Expression` 打包为一个可恢复 expression unit。
-3. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录可用 `AttributePredicator` 或 `Attribute` 表示字段名与字段值。字段名是 attribute name，应通过 `attribute` 或 lexical `AttributePredicator` 自身表示；字段值为 `pred.arg.2`；若外部 host entity 缺失，`pred.arg.1 -> Missing` 是合法且必要的。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`。
+3. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录应以字段名 token 本身作为 lexical `AttributePredicator`；字段值为 `pred.arg.2`；若外部 host entity 缺失，`pred.arg.1 -> Missing` 是合法且必要的。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`，也不得用 `Attribute` symbol node 加 `attribute -> field label` 重复表示字段名。
 4. 冒号、破折号、逗号、斜杠、括号、句点若只是 fragment 内部 boundary 或 close marker，应作为局部 punctuation / expression boundary，不得成为事实谓词。
 5. 纯装饰符号、乱码、截断严重、问候/签名、媒体边界、版权声明等低信息片段仍有片段语义，应优先保留为低语义信息 fragment；除非上游数据集有明确的非语义清洗策略，不应仅因信息量低而过滤。
 6. 对问候、签名、感谢、残句等仍能看出普通语法或省略句结构的片段，应先按省略结构解析，必要时用 `Missing` 补出可由结构支持的省略论元；不得因为它是邮件结束语、寒暄语或低信息文本就直接平铺为 `Expression`。
