@@ -148,6 +148,14 @@ R-FUNC-02: `if` meaning "if" is `LogicalPredicator`; `if` meaning "whether" is `
 
 R-FUNC-03: `that` is typed by function: nominal clause marker `GeneralFunctor`, demonstrative entity `NominalConstant`, determiner `DeterminerConstant`, relative marker `GeneralFunctor`.
 
+R-FUNC-04: Sentence-initial `but/however` that preserves an adversative or contrast relation remains `LogicalPredicator`; absence of an in-sample left argument is not by itself a reason to retag it as discourse or modification. The previous or left proposition is `pred.arg.1` when present or recoverable, and the current adversative proposition is normally `pred.arg.2`.
+
+R-FUNC-05: `LogicalPredicator` argument numbers are syntactic relation labels: the main, matrix, host, or unmarked proposition is `pred.arg.1`; the clause or proposition directly marked by the logical connector is `pred.arg.2`. For `because/if/although/when/unless` and similar subordinators, the marked subordinate clause is `pred.arg.2` regardless of word order.
+
+R-FUNC-06: Resultive or conclusive `so/therefore/thus` is `LogicalPredicator`, but it is not a subordinating main/subordinate-clause relation. In `A so/therefore/thus B`, the previous or left unmarked proposition `A` is `pred.arg.1`, and the marker-introduced posterior/current proposition `B` is `pred.arg.2`. In sentence-initial one-sided `So/Therefore/Thus B`, do not invent an external `A`; the visible current proposition `B` remains `pred.arg.2`.
+
+R-FUNC-07: Additive or alternative sentence-initial `and/or` should preserve conjunction or alternative semantics as `ConjunctionalFunctor` with `func.arg`, rather than being changed to ordinary modification solely because one conjunct is discourse-external.
+
 R-PUNCT-01: If punctuation clearly closes a local structure, it should be the root of that local closed structure.
 
 R-PUNCT-02: A punctuation root is common in the current JSONL representation and is not by itself an error. It becomes an error only when the punctuation closes the wrong structure.

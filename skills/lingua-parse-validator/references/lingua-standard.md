@@ -813,15 +813,20 @@ because/LogicalPredicator
 1. `if`、`because`、`therefore`、`so`、`although` 等不应简单丢弃。
 2. 它们通常连接两个事实或命题。
 3. 若一个主事实连接多个从句关系，应明确建模层级。
-4. 逻辑关系的方向要符合语义：原因、结果、条件、结论不能反。
+4. `LogicalPredicator` 的 `pred.arg.1` / `pred.arg.2` 是句法关系标签，不是原因、结果、条件、结论等语义角色标签。统一原则是：主句、矩阵句、宿主命题或未被该逻辑连接词标记的一侧作 `pred.arg.1`；由该逻辑连接词直接标记、引导或依存的一侧作 `pred.arg.2`。
+5. 句首位置本身不改变连接词的语义功能。`And`、`But`、`So`、`Or`、`However` 等若仍承担并列、转折、因果、结论或选择关系，应尽量按其本意标为 `ConjunctionalFunctor` 或 `LogicalPredicator`，不得仅因位于句首、左侧论元在样本外或只显式出现一侧内容而改标为普通 `ModificationalConstant` / `as:modification`。
+6. 外部或隐含论元不应为了凑二元结构而臆造；但显式可见的论元方向必须按句法功能放对。`because/if/although/though/when/while/unless/until/before/after/since/as soon as/so that/so as to` 等引导的从句作 `pred.arg.2`，主句作 `pred.arg.1`，不随语序变化。`A so/therefore/thus B`、`A but/however B` 这类非从属连接不应分析为 “B 是主句、A 是从句”；通常以前文或左侧未标记命题 `A` 为 `pred.arg.1`，以连接词标记的后项 / 当前命题 `B` 为 `pred.arg.2`。若句首 `So/Therefore/Thus/But/However` 只有当前命题显式出现，不臆造外部前项，当前命题仍按连接词标记的一侧保留为 `pred.arg.2`。
+7. 只有当该词确实只是话语填充、语气组织、格式标记，且不表达并列、选择、转折、因果、条件、结论等事实关系时，才应标为 discourse / modification 类节点。
 
 错误：
 
 | 错误 | 严重程度 |
 |---|---|
 | 丢掉关键逻辑连接词 | major |
-| 原因和结果反了 | major |
+| 主句和连接词标记的从句 / 依存命题方向反了 | major |
 | 条件从句误作实体修饰 | major |
+| 仅因句首或缺少显式左侧论元，把有转折、结论、并列或选择语义的连接词改成普通 modification | major |
+| 将 `because/if/although/when/so that` 等标记的从句放成 `pred.arg.1`，或将 `A so/therefore/thus B` 的后项 / 句首单边 `So/Therefore/Thus B` 放成 `pred.arg.1` | major |
 | discourse marker 无事实作用时未标 | minor |
 
 ---
@@ -833,6 +838,11 @@ because/LogicalPredicator
 | 词形 / 用法 | 推荐 node type | 说明 |
 |---|---|---|
 | `but` 表示转折、对比、让步，连接两个事实或命题 | `LogicalPredicator` | 如 `A happened, but B happened`。不应标为普通并列 `ConjunctionalFunctor`。 |
+| 句首 `But/However` 承接前文并表达转折、对比、让步 | `LogicalPredicator` | 不应仅因左侧命题在样本外而改成普通 modification；当前显式命题通常是转折后项 `pred.arg.2`。 |
+| `because/if/although/when/unless` 等引导从句 | `LogicalPredicator` | 主句作 `pred.arg.1`；连接词直接引导的从句作 `pred.arg.2`。 |
+| 句首或句中 `So/Therefore/Thus` 表示结果、结论、推论 | `LogicalPredicator` | `A so/therefore/thus B` 中前项 `A` 是未标记命题，作 `pred.arg.1`；连接词标记的后项 / 当前命题 `B` 作 `pred.arg.2`。句首单边 `So/Therefore/Thus B` 不臆造前项，显式 `B` 仍作 `pred.arg.2`。 |
+| 句首 `And/Or` 表示延续并列或选择 | `ConjunctionalFunctor` | 保留并列/选择本意与 `func.arg` 结构；另一分支在样本外时，可只保留可见分支。 |
+| `well`、`anyway`、无事实关系的 `so/but/and` 话语填充 | discourse / modification 类 | 仅在没有并列、选择、转折、因果、条件、结论等事实关系时使用。 |
 | `if` 表示“如果”，连接条件从句与主句 | `LogicalPredicator` | 如 `if it rains, the match is canceled`。 |
 | `if` 表示“是否”，引导名词性从句 | `GeneralFunctor` | 如 `ask if he came`，整体从句作为被询问内容。 |
 | `that` 引导名词性从句 | `GeneralFunctor` | 如 `said that he left`、`think that it is true`。 |
