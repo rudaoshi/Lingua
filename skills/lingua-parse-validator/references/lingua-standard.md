@@ -131,12 +131,13 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | `Discourse` | 话语标记、插入语、话语层连接。 |
 | `Expression` | 复合表达，如范围、公式、多 token 符号表达。 |
 | `List` | 异质元素列表，不预设共享谓词。 |
-| `Missing` | 结构中需要但文本未显式出现的省略成分。 |
 | `Modification` | 修饰结构，将被修饰对象与修饰体打包。 |
 | `Parataxis` | 并列、并置、协调结构。 |
 | `Ref` | 指代、照应、相对从句中的 reference。 |
 | `Vocative` | 呼语。 |
 | `Whether` | 极性疑问或 whether-clause 的结构节点。 |
+
+当前标准不允许 `Missing` node。任何 `spans: "Missing"`、symbol label `Missing`，或用 `Missing` 作为隐式实体 / 省略论元占位的节点，都应视为非法标注。若论元无法由句内 token、控制关系、并列共享、被动/提升关系或 `DESC(v)` 负责任恢复，应让该论元缺省；不得为了补齐 schema 创建 `Missing`。
 
 ### 3.2 Node types
 
@@ -148,7 +149,7 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | `LogicalPredicator` | 逻辑、时间、因果、条件等关系谓词，如 `if`、`because`、`therefore`。 |
 | `ReferentialPredicator` | 指代结构谓词。 |
 | `ConjunctionalFunctor` | 协调、并列函数，如 `and`、`or`。 |
-| `ExpressionFunctor` | 复合表达函数，如 `to` in `48 to 49`。 |
+| `ExpressionFunctor` | 复合表达函数，如 `to` in `48 to 49`，以及日期、时间、地址、人名 / 专名、代码、公式等格式化表达里的格式 functor。 |
 | `GeneralFunctor` | 一般函数，常用于 wh-word。 |
 | `ListFunctor` | 异质列表函数。 |
 | `ModificationalFunctor` | 修饰函数，通常对应 `Modification`。 |
@@ -161,6 +162,8 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | `OtherConstant` | 无法归入上述类别的 fallback。 |
 
 功能词的 node type 应按其在句中的语义功能判断，而不是按词形固定。例如同一个词形 `if`、`that` 在不同上下文中可对应不同类型；评估器应根据它是在连接命题、引导名词性从句、指代实体，还是限定名词来判定。
+
+纯标点或纯符号 token 不得标为任何 `*Predicator`。也就是说，`:`、`-`、`--`、`...`、括号、引号、斜杠、`&`、`@`、`#` 等节点，即使在文本中承担分隔、并置、解释、范围、格式或连接作用，也不应作为 `FactualPredicator`、`LogicalPredicator`、`AppositionalPredicator`、`AttributePredicator` 或 `ReferentialPredicator`。它们应按功能标为 `PunctuationalConstant`、`SymbolConstant`、`ExpressionFunctor` / `Expression` 的内部成分，或在 `&` 明确等同 `and` 时标为 `ConjunctionalFunctor`。若需要表达标点两侧的语义关系，应由 lexical predicate / functor 或 `Discourse`、`Parataxis`、`Apposition`、`Attribute`、`Expression` 等结构承载；标点本身只负责边界、close scope 或表达式组成。
 
 ### 3.3 Edge labels
 
@@ -247,6 +250,8 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 
 `nonsense` 属于合法边标签，但仅表示低语义信息的 fallback / placeholder 关系。评估时不得把它当作高置信语义关系；若它承载了应由 `pred.arg.*`、`modification`、`ref` 等核心边表达的信息，可在语义忠实性、PFA 结构或可读性维度中按上下文轻罚。
 
+Dummy / extraposition `it` 也是可分析结构，不应使用 `nonsense` 粗略挂接。`It is interesting/easy/fair to ...`、`it is possible that ...` 等结构中，若 `it` 指向后置不定式或 content clause，应使用 `Ref`、`Modification` 或其他可恢复结构把占位 `it` 与真实内容关联起来。
+
 判错标准：
 
 | 情况 | 严重程度 |
@@ -301,7 +306,7 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | 添加不存在的逻辑关系 | major |
 | 推断常识但文本未表达 | major |
 | 规范化词形，如 `gave` 标为 `give` | 可接受 |
-| 合理补出省略 `Missing` | 可接受，但需结构上有依据 |
+| 添加 `Missing` node 表示省略或隐式实体 | major |
 
 ---
 
@@ -332,7 +337,7 @@ give/FactualPredicator
 2. 主语、施事、经历者、被赋属性者等 subject-like argument 通常为 `pred.arg.1`。
 3. 除非原句确实没有对应成分、该谓词语义上不需要 `arg1`，或文本省略且无法由句内结构负责任恢复，所有 predicate node 原则上都应补足 `pred.arg.1`。
 4. 对非限定谓词、分词、目的从句、相对从句、补足从句和并列共享谓词，也必须检查 `pred.arg.1`。若主语或施事可由控制、提升、并列共享、被动结构、前文 wrapper 或 `DESC(v)` 恢复，应显式连接到可恢复的节点或 descendant subgraph。
-5. 不应为了满足形式完整性而机械添加 `Missing` 作为 `pred.arg.1`。若省略主语只是泛指、祈使语气、标题/fragment、目的不定式或无法从句内确定的参与者，允许该 predicate 不带 `pred.arg.1`，并在语义评分中按上下文判断；若 controller 可恢复，则应连接到 controller，而不是连接到 `Missing`。
+5. 不允许创建 `Missing` node 作为 `pred.arg.1` 或其他论元。若省略主语只是泛指、祈使语气、标题/fragment、目的不定式或无法从句内确定的参与者，允许该 predicate 不带 `pred.arg.1`，并在语义评分中按上下文判断；若 controller 可恢复，则应连接到 controller 或其 `DESC`。
 6. 直接宾语通常为 `pred.arg.2`。
 7. 间接宾语通常为 `pred.arg.3`。
 8. 宾补、结果补语、被谓词选择的补足语等可用 `pred.arg.4`。
@@ -376,6 +381,8 @@ is in/FactualPredicator
   pred.arg.2 -> Houston
 ```
 
+若 `be` 后面的介词部分本身是后文清单中的复合介词 / 固定修饰引导词，如 `out of`、`due to`、`close to`、`consistent with`，优先按该固定短语整体建 `ModificationalFunctor`，不要把 `be + 固定短语` 整段压成不可拆的 `FactualPredicator`。
+
 4. **`be` 与介词之间有其他成分时，介词必须单独拆出**。若 `be` 和介词之间插入副词、程度词、否定、补语或其他成分，如 `is clearly in trouble`、`is not in Houston`、`was already at home`、`is all about this`，不得把整段无结构地合并为一个 predicate。应将 `be` 或可恢复的状态谓词作为主体，并将介词短语作为单独 `ModificationalFunctor`、`Modification` 或等价结构挂接，使插入成分和介词宾语的 scope 可恢复。
 
 5. **`there be` 存在句拆分，`there` 作为 `pred.arg.1`**。`there is/are/was/were ...` 不应把 `there be` 合并为一个不可分析谓词。`be` 应作为 `FactualPredicator`，`there` 作为 `pred.arg.1`，存在物或其可恢复 descendant subgraph 作为 `pred.arg.2`。例如：
@@ -405,6 +412,26 @@ are/FactualPredicator
 1. 若成分是谓词语义价的一部分，或表达宾补、结果状态、被谓词选择的非限定补足语，可作为 `pred.arg.4`。例如 `painted the wall red` 中 `red`、`elected him president` 中 `president`、`attempt to leave` 中 `to leave`。
 2. 若成分回答目的、原因、时间、方式、条件等问题，且主谓宾事实在没有该成分时仍然完整，应建模为 `Modification`、介词/状语修饰，或在有明确逻辑关系时建模为 `LogicalPredicator`。
 3. 目的状语，尤其是可改写为 `in order to ...` 的不定式短语，不应作为主谓词的 `pred.arg.4`；它应作为修饰体修饰完整事件或相应事件子图。
+4. 若普通目的、时间、方式状语有显式引导词（如 `to`、`on`、`in`、`for`），优先用该 `to`/介词作为有 token anchor 的 `ModificationalFunctor`：`variable` 指向核心事件或已包装的核心事件，`body` 指向状语内容。不要为了这种有锚点的结构再额外包一层无 token 的 `Modification` aux。`in order to` 等固定引导短语应作为一个整体的 `ModificationalFunctor`。
+5. 当上层谓词选择的是“带有状语修饰的完整补足事件”时，上层边可以指向该介词/`to` 修饰结构的根节点；但不能把状语的 `body` 本身误当成被选择的 `pred.arg.4`。
+
+复合介词 / 固定修饰引导词按 `in order to` 的方式处理：若整个短语在句中作为普通目的、原因、让步、依据、关系、空间、时间、方式、替代、交换、补充等修饰引导词，应覆盖连续 token 作为一个 `ModificationalFunctor`，`variable` 指向被修饰的核心事件/实体/已包装结构，`body` 指向该短语引出的内容。不要把短语内部拆成多层普通介词、名词或 `to`，也不要额外添加无 token 的 `Modification` wrapper，除非确有额外 scope 需要。
+
+强制按整体处理的常见清单包括：
+
+| 类型 | 固定短语 |
+|---|---|
+| 目的 / 用途 | `in order to`, `so as to`, `in order for`, `for the purpose of`, `for purposes of`, `for the sake of` |
+| 原因 / 根据结果 | `because of`, `due to`, `owing to`, `thanks to`, `on account of`, `as a result of`, `by reason of`, `in view of`, `in light of` |
+| 让步 / 例外 / 替代 | `in spite of`, `regardless of`, `irrespective of`, `apart from`, `aside from`, `except for`, `instead of`, `rather than` |
+| 依据 / 符合 / 约束 | `according to`, `pursuant to`, `in accordance with`, `in compliance with`, `in line with`, `consistent with`, `subject to`, `contrary to` |
+| 话题 / 关系 / 方面 | `with respect to`, `with regard to`, `in regard to`, `in relation to`, `relative to`, `in terms of`, `in connection with`, `with reference to`, `in reference to`, `as to`, `as for` |
+| 空间 / 时间位置 | `in front of`, `in back of`, `on top of`, `at the top of`, `at the bottom of`, `at the end of`, `at the beginning of`, `in the middle of`, `next to`, `close to`, `far from`, `away from`, `out of`, `inside of`, `outside of`, `ahead of`, `prior to`, `subsequent to` |
+| 方式 / 交换 / 代表 / 补充 | `by means of`, `by way of`, `in exchange for`, `in return for`, `in place of`, `on behalf of`, `in favor of`, `for lack of`, `in case of`, `in addition to`, `as well as`, `together with`, `along with` |
+
+该清单不是封闭词表。遇到相同构式的固定短语（如 `prep + noun + prep`、`adjective/participle + prep`、`adverb + prep`）且整体语义不可由内部普通组合稳定恢复时，也按整体 `ModificationalFunctor` 处理。若同形短语在具体句中不是修饰引导词，例如 `as well as` 明确承担并列、`rather than` 承担逻辑对比，或 `in order` 只是普通名词短语“按顺序”，则仍按实际功能标为 `ConjunctionalFunctor`、`LogicalPredicator`、普通 nominal/modifier 等。
+
+同形例外必须按实际构式判断，不按字符串盲合并。`is/was due to start/compete/appear` 一类是 `due` + infinitive 表示“预定/应当”，不是原因介词 `due to`；`back/drop/come/go out of`、`get/go along with`、`shy away from`、`come away from` 等 phrasal / prepositional verb 中的 particle 和介词仍按动词结构处理；`5 out of 5` 是比例/评分结构；`do next to file` 中 `next` 和目的 `to file` 分属不同成分。这些不强制合并成清单中的固定修饰引导词。
 
 常见错误：
 
@@ -607,7 +634,7 @@ Ref/ReferentialPredicator
 2. wh-word、关系从句 `that` 或其他显式指代成分如果是论元，应参与谓词论元结构。
 3. 显式 wh-word、关系从句 `that` 或其他指代成分与 head entity 之间必须有 `ref`、`as:ref` 或等价 `Ref(pred.arg.1, pred.arg.2)` 结构。
 4. 整个相对从句作为修饰体修饰 head entity。
-5. 零关系从句没有显式 wh-word / `that` / 指代词时，不应凭空添加 `Ref` 节点。此时应让 head entity 直接填补从句内部的隐含 gap，或在确有必要时使用有结构依据的 `Missing`。
+5. 零关系从句没有显式 wh-word / `that` / 指代词时，不应凭空添加 `Ref` 节点。此时应让 head entity 直接填补从句内部的隐含 gap；若 gap 无法由显式 head 或结构关系恢复，则保持缺省，不得添加 `Missing` node。
 
 零关系从句示例：
 
@@ -698,7 +725,7 @@ Expression
 
 显式属性名必须由 lexical `AttributePredicator` 自身承载：也就是说，`AttributePredicator` 的 `spans` 应直接覆盖 `Email`、`Tel`、`Job Title`、`Attendance` 等字段名 token。不得创建一个 `spans="Attribute"` 的 symbol node，再用 `attribute -> field label` 把字段名挂回去；这会把同一个属性关系表达两次。
 
-`Attribute` symbol node 只用于属性名确实未在文本中显式出现，或属性关系是结构性隐含关系的情况。此时 `Attribute` 节点自身就表示“某个未命名属性关系”，不应再添加 `attribute -> Missing`。
+`Attribute` symbol node 只用于属性名确实未在文本中显式出现，或属性关系是结构性隐含关系的情况。此时 `Attribute` 节点自身就表示“某个未命名属性关系”，不应再添加隐式属性名或 `Missing` node。
 
 显式属性示例：
 
@@ -735,11 +762,11 @@ Attribute
 3. `pred.arg.1` 通常为被赋予属性的实体。
 4. `pred.arg.2` 通常为属性值。
 5. 括号中的身份、类型、别名需根据语义区分 `Attribute` 与 `Apposition`。
-6. `field label: value` 形式中，field label 是 attribute name，不是 `pred.arg.1`。若 host entity 在样本中缺失，应使用 `field label/AttributePredicator -> Missing` 作为 `pred.arg.1`，并用 `pred.arg.2` 指向字段值。
-7. `value field label` 形式（如 `312-666-2372 Tel`）中，`Tel` 是 lexical `AttributePredicator`，电话号码是 `pred.arg.2`，host 缺失时 `pred.arg.1 -> Missing`。
-8. `entity value` 形式（如 `Kim 713-853-3098`）中，实体是 `pred.arg.1`，电话号码等值是 `pred.arg.2`；若 attribute name 缺失，可用 `Attribute` symbol node 表示隐式属性关系，但不得再添加 `attribute -> Missing`。不得把电话号码当作实体的同位语。
+6. `field label: value` 形式中，field label 是 attribute name，不是 `pred.arg.1`。若 host entity 在样本中缺失，`pred.arg.1` 应缺省，只用 `pred.arg.2` 指向字段值；不得添加 `Missing` node。
+7. `value field label` 形式（如 `312-666-2372 Tel`）中，`Tel` 是 lexical `AttributePredicator`，电话号码是 `pred.arg.2`；host 缺失时 `pred.arg.1` 缺省。
+8. `entity value` 形式（如 `Kim 713-853-3098`）中，实体是 `pred.arg.1`，电话号码等值是 `pred.arg.2`；若 attribute name 缺失，可用 `Attribute` symbol node 表示隐式属性关系，但不得再添加隐式属性名或 `Missing` node。不得把电话号码当作实体的同位语。
 9. 单独出现的值（如单独电话号码、URL、文件名）若 host 和 attribute name 都缺失，不应强行建成 Attribute，可保留为 `NominalConstant`、`Expression` 或 fragment。
-10. 冒号、破折号等只用于分隔 field label 和 value 时，是 delimiter punctuation，应挂在属性结构上作为 `punctuation`，不应作为 attribute name、host 或 value；除非该标点还明确 close 整个结构，否则不应上提为 root。
+10. 冒号、破折号等只用于分隔 field label 和 value 时，是 delimiter punctuation，应挂在属性结构上作为 `punctuation`，不应作为 attribute name、host、value 或任何 `*Predicator`；除非该标点还明确 close 整个结构，否则不应上提为 root。
 
 常见错误：
 
@@ -750,8 +777,8 @@ Attribute
 | 把 field label 当作 `pred.arg.1` host | major |
 | 把 `entity value` 误标为 Apposition | major |
 | 用 `Attribute` symbol node 加 `attribute -> field label` 重复表示显式字段名 | major |
-| 对隐式属性名添加 `attribute -> Missing` | minor / major |
-| 把 delimiter 冒号当作 host、attribute name 或 value | major |
+| 添加 `Missing` node 作为 host、属性名或论元占位 | major |
+| 把 delimiter 冒号、破折号等当作 host、attribute name、value 或 `*Predicator` | major |
 | 属性结构遗漏 | major |
 | Attribute 与 Apposition 混淆但语义可恢复 | minor / major |
 
@@ -815,7 +842,7 @@ because/LogicalPredicator
 3. 若一个主事实连接多个从句关系，应明确建模层级。
 4. `LogicalPredicator` 的 `pred.arg.1` / `pred.arg.2` 是句法关系标签，不是原因、结果、条件、结论等语义角色标签。统一原则是：主句、矩阵句、宿主命题或未被该逻辑连接词标记的一侧作 `pred.arg.1`；由该逻辑连接词直接标记、引导或依存的一侧作 `pred.arg.2`。
 5. 句首位置本身不改变连接词的语义功能。`And`、`But`、`So`、`Or`、`However` 等若仍承担并列、转折、因果、结论或选择关系，应尽量按其本意标为 `ConjunctionalFunctor` 或 `LogicalPredicator`，不得仅因位于句首、左侧论元在样本外或只显式出现一侧内容而改标为普通 `ModificationalConstant` / `as:modification`。
-6. 外部或隐含论元不应为了凑二元结构而臆造；但显式可见的论元方向必须按句法功能放对。`because/if/although/though/when/while/unless/until/before/after/since/as soon as/so that/so as to` 等引导的从句作 `pred.arg.2`，主句作 `pred.arg.1`，不随语序变化。`A so/therefore/thus B`、`A but/however B` 这类非从属连接不应分析为 “B 是主句、A 是从句”；通常以前文或左侧未标记命题 `A` 为 `pred.arg.1`，以连接词标记的后项 / 当前命题 `B` 为 `pred.arg.2`。若句首 `So/Therefore/Thus/But/However` 只有当前命题显式出现，不臆造外部前项，当前命题仍按连接词标记的一侧保留为 `pred.arg.2`。
+6. 外部或隐含论元不应为了凑二元结构而臆造；但显式可见的论元方向必须按句法功能放对。`because/if/although/though/when/while/unless/until/before/after/since/as soon as/so that` 等引导的从句作 `pred.arg.2`，主句作 `pred.arg.1`，不随语序变化。`so as to` 属于目的复合修饰引导词，按 `in order to` 一类 `ModificationalFunctor` 处理，不进入本条 `LogicalPredicator` 规则。`A so/therefore/thus B`、`A but/however B` 这类非从属连接不应分析为 “B 是主句、A 是从句”；通常以前文或左侧未标记命题 `A` 为 `pred.arg.1`，以连接词标记的后项 / 当前命题 `B` 为 `pred.arg.2`。若句首 `So/Therefore/Thus/But/However` 只有当前命题显式出现，不臆造外部前项，当前命题仍按连接词标记的一侧保留为 `pred.arg.2`。
 7. 只有当该词确实只是话语填充、语气组织、格式标记，且不表达并列、选择、转折、因果、条件、结论等事实关系时，才应标为 discourse / modification 类节点。
 
 错误：
@@ -827,6 +854,7 @@ because/LogicalPredicator
 | 条件从句误作实体修饰 | major |
 | 仅因句首或缺少显式左侧论元，把有转折、结论、并列或选择语义的连接词改成普通 modification | major |
 | 将 `because/if/although/when/so that` 等标记的从句放成 `pred.arg.1`，或将 `A so/therefore/thus B` 的后项 / 句首单边 `So/Therefore/Thus B` 放成 `pred.arg.1` | major |
+| 把纯标点或纯符号分隔符（如 `:`, `-`, `--`, `...`, `&`）当作 `LogicalPredicator` | major |
 | discourse marker 无事实作用时未标 | minor |
 
 ---
@@ -967,29 +995,25 @@ Ref/ReferentialPredicator
 
 ---
 
-### 6.13 Missing
+### 6.13 Missing Node Policy
 
-`Missing` 用于处理省略、椭圆、省略主语等结构中需要但未显式出现的论元。
+当前标准不允许 `Missing` node。`Missing` 不再用于处理省略、椭圆、省略主语、field/key-value 缺失 host，或任何无法由文本 token 承载的隐式实体。
 
-使用条件：
+处理原则：
 
-1. 句法或语义结构确实需要一个隐含成分。
-2. 文本中没有对应 token。
-3. 该隐含成分由句内结构、控制关系、并列共享、被动/提升关系或明确上下文负责任地支持，但没有更合适的显式节点可连接。
-4. 使用 `Missing` 能表达真实省略，而不是只为补齐 schema。
-5. 不应滥用 `Missing` 添加推测信息。
-
-`Missing` 不是 `pred.arg.1` 的默认占位符。祈使句、标题、短 fragment、泛指不定式、目的状语等若没有句内可恢复的 subject-like participant，不应机械添加 `pred.arg.1 -> Missing`；可以让该 predicate 暂无 `pred.arg.1`，或在 fragment 结构中按标题/表达式处理。若 subject-like participant 可恢复，例如控制结构中的 `you want to publish`、`by not accepting` 中与主句共享的施事，应直接连接到可恢复节点或其 `DESC`，而不是连接到 `Missing`。
+1. 若论元、controller、host、attribute bearer 或 implicit participant 可由句内显式 token、控制关系、并列共享、被动/提升关系、相对从句 head，或某个 wrapper 的 `DESC(v)` 负责任恢复，应直接连接到该显式节点或 descendant subgraph。
+2. 若无法负责任恢复，应让对应论元缺省；不得为了满足形式完整性而创建 `Missing`。
+3. field/key-value fragment 中，field label 仍是 lexical `AttributePredicator`，value 是 `pred.arg.2`；缺失的外部 host 不标注。
+4. 祈使句、标题、短 fragment、泛指不定式、目的状语、问候/签名/感谢等若没有句内可恢复的 subject-like participant，可以缺少 `pred.arg.1`。
+5. 任何 `spans: "Missing"`、symbol label `Missing`，或以 `Missing` 作为边目标的结构都应判为非法标注并删除。
 
 判错：
 
 | 情况 | 严重程度 |
 |---|---|
-| 合理补出省略论元 | 正确 |
-| 用 `Missing` 添加文本没有暗示的实体 | major |
-| 用 `Missing` 机械填充无法恢复的 `pred.arg.1` | minor / major |
-| 有可恢复 controller 却连接到 `Missing` | major |
-| 省略结构不补但事实仍可理解 | minor / major |
+| 可恢复 controller / host / antecedent 却未连接 | major |
+| 无法恢复的论元保持缺省 | 正确 |
+| 添加 `Missing` node 表示省略、host 或隐式实体 | major |
 | 关键省略导致事实结构断裂 | major |
 
 ---
@@ -1008,11 +1032,12 @@ John, please close the door.
 
 ```text
 close/FactualPredicator
-  pred.arg.1 -> Missing/you
   pred.arg.2 -> the door
   vocative -> John
   discourse -> please
 ```
+
+说明：祈使句的 subject-like participant 未在句内显式出现，当前标准不创建 `Missing/you`；若上下文中有显式 controller，才连接到该 controller。
 
 评估原则：
 
@@ -1032,9 +1057,9 @@ close/FactualPredicator
 2. 这类 metadata token 可以建成 `NominalConstant` 或必要时的轻量 wrapper，并通过 `as:discourse` / `discourse` 连接到正文子图，以保持 single-root DAG 与 token coverage。
 3. metadata 不得作为正文事实谓词的主语、宾语、补语、普通修饰体或逻辑连接词，除非文本明确表达它参与该事实。
 4. `Overview Since 1992, P`、`Biography X was born...`、`History P` 等结构中，`Overview` / `Biography` / `History` 是 header，不应修饰 `Since`、`X` 或 `P` 的核心谓词；正文命题应独立恢复。
-5. 冒号、破折号等分隔符若只是 header 与正文的边界，应作为局部 punctuation / discourse boundary，而不是事实谓词。
+5. 冒号、破折号等分隔符若只是 header 与正文的边界，应作为局部 punctuation / discourse boundary，而不是事实谓词、逻辑谓词或同位谓词。
 6. 若样本本身是纯 key-value / field-value 记录，没有独立正文谓词，应优先用覆盖 key / field label token 的 lexical `AttributePredicator` 表示该元数据关系；只有属性名未显式出现时才使用 symbol node `Attribute`。value 对应属性值，冒号、破折号仅作为 boundary punctuation。
-7. 若 key-value 中缺少被赋予属性的外部实体，不得把字段值提升为 `pred.arg.1` host；字段值始终是 `pred.arg.2`。无法从句内恢复的上下文 host 应用 `Missing` 表示，并在评估中视为低语义信息。
+7. 若 key-value 中缺少被赋予属性的外部实体，不得把字段值提升为 `pred.arg.1` host；字段值始终是 `pred.arg.2`。无法从句内恢复的上下文 host 保持缺省，不添加 `Missing` node。
 
 示例：
 
@@ -1085,14 +1110,14 @@ Chicago, IL 60622
 表示规则：
 
 1. 平行字段、列名、菜单项、标题列表可用 `ListFunctor` / `List` 挂接每个项目；项目之间没有事实性 predicate-argument 关系时，不得强行建立谓词。
-2. 页码、编号、比分、战绩、日期时间、时间范围、电话号码、地址、文件名、百分比、货币数值、模型号等常规符号串可用 `ExpressionFunctor` / `Expression` 打包为一个可恢复 expression unit。
-3. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录应以字段名 token 本身作为 lexical `AttributePredicator`；字段值为 `pred.arg.2`；若外部 host entity 缺失，`pred.arg.1 -> Missing` 是合法且必要的。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`，也不得用 `Attribute` symbol node 加 `attribute -> field label` 重复表示字段名。
-4. 冒号、破折号、逗号、斜杠、括号、句点若只是 fragment 内部 boundary 或 close marker，应作为局部 punctuation / expression boundary，不得成为事实谓词。
+2. 页码、编号、比分、战绩、日期时间、时间范围、地址、电话号码、email、URL、文件名、百分比、货币数值、模型号、化学式、公式、专名缩写等常规符号串可用 `ExpressionFunctor` / `Expression` 打包为一个可恢复 expression unit。format 本身也是一种 functor：`HH:MM`、`HH:MM:SS`、`M:SS.xx`、日期、地址、姓名 / 专名、代码、计算式等表达式内部的分隔符或操作符，若负责把两侧部件组合成一个格式表达，应作为独立 `ExpressionFunctor` 连接两侧部件，不得把整个格式串无结构地合并为一个 `NominalConstant`。
+3. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录应以字段名 token 本身作为 lexical `AttributePredicator`；字段值为 `pred.arg.2`；若外部 host entity 缺失，`pred.arg.1` 保持缺省，不添加 `Missing` node。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`，也不得用 `Attribute` symbol node 加 `attribute -> field label` 重复表示字段名。
+4. 冒号、破折号、逗号、斜杠、括号、句点若只是 fragment 内部 boundary 或 close marker，应作为局部 punctuation / expression boundary，不得成为事实谓词、逻辑谓词、同位谓词、属性谓词或其他 `*Predicator`。
 5. 纯装饰符号、乱码、截断严重、问候/签名、媒体边界、版权声明等低信息片段仍有片段语义，应优先保留为低语义信息 fragment；除非上游数据集有明确的非语义清洗策略，不应仅因信息量低而过滤。
-6. 对问候、签名、感谢、残句等仍能看出普通语法或省略句结构的片段，应先按省略结构解析，必要时用 `Missing` 补出可由结构支持的省略论元；不得因为它是邮件结束语、寒暄语或低信息文本就直接平铺为 `Expression`。
+6. 对问候、签名、感谢、残句等仍能看出普通语法或省略句结构的片段，应先按省略结构解析；若省略论元无法由句内结构恢复，则保持缺省，不添加 `Missing` node。不得因为它是邮件结束语、寒暄语或低信息文本就直接平铺为 `Expression`。
 7. `Expression`、`List`、`Attribute`、局部 punctuation root 或 `nonsense` 只应作为 fallback：当片段内部没有可负责任恢复的谓词、修饰、呼语、介词短语、字段、并列或省略关系时，才把它作为低语义信息 fragment 打包。不得把 `nonsense` 用于可按上述规则解释的正常字段或表达式。
 8. 纯 fragment 的 root 可以是普通语法结构、省略结构、`ListFunctor`、`ExpressionFunctor`、`AttributePredicator`、对应 aux node，或能关闭该 fragment 的 `PunctuationalConstant`；只要 `DESC(root)` 恢复完整 fragment 即可。
-9. 纯日期、时间、日期时间和时间范围片段，如 `02/27/2001 08:23 AM`、`Feb 2005`、`September 21, 2004`、`Tuesday, March 20th.`、`September 20, 1888?`、`4:00 pm - 6:00 pm`，应表示为一个 `Expression`，其子项可按 date / time / meridiem / range boundary 或更细粒度符号部件恢复；不要把 date-time 内部格式关系标成普通修饰，也不要把时间范围分隔符误标为事实谓词。
+9. 纯日期、时间、日期时间和时间范围片段，如 `02/27/2001 08:23 AM`、`Feb 2005`、`September 21, 2004`、`Tuesday, March 20th.`、`September 20, 1888?`、`4:00 pm - 6:00 pm`，应表示为一个 `Expression`，其子项可按 date / time / meridiem / range boundary 或更细粒度符号部件恢复；其中 `HH:MM` / `HH:MM:SS` 的 `:`、日期中的 `/` / `-`、小数或时长中的 `.`, 数字范围中的 `-` / `to` 等都是格式 `ExpressionFunctor`，两侧部件是其 `func.arg`。不要把 date-time 内部格式关系标成普通修饰，也不要把时间范围分隔符误标为事实谓词。
 10. 新闻 dateline 或来源行，如 `DUBLIN 1996-08-27`、`LOS ANGELES 1996-12-05`，应表示为 `List(location-expression, date-expression)` 或等价可恢复结构：location 和 date 是同一元数据行的两个字段，不是彼此的修饰体，也不是正文事实谓词的论元。
 11. 纯页码/页引用片段，如 `p. 36`、`pp. 12-15`，应作为 page-reference `Expression` 或等价可恢复表达式；不要把 `p.` 和页码误当成并列 `List` 项。
 
@@ -1156,6 +1181,23 @@ Koichi Morita (army officer)
 3. 引号标记引用内容。
 4. 冒号、分号标记解释、枚举或并列事实。
 
+核心限制：标点 / 符号节点可以是结构边界、局部 root、表达式部件或连接符号，但不能自己作为自然语言谓词。只要 `SELF(v)` 只包含标点或符号字符，原则上不得标为 `FactualPredicator`、`LogicalPredicator`、`AppositionalPredicator`、`AttributePredicator` 或 `ReferentialPredicator`。
+
+具体处理：
+
+1. `field label: value`、`header - body`、`speaker: utterance` 中的冒号、破折号是 delimiter punctuation。字段名、标题或 speaker label 若需要建模，应由 lexical token 自身承担 `AttributePredicator`、metadata 或 discourse 角色；分隔符只挂 `punctuation` / `as:punctuation`。
+2. `A - B`、`A -- B`、`A: B`、`A ... B` 若表达解释、承接、并置或话语推进，不得把 `-`、`--`、`:`、`...` 标成 `LogicalPredicator` 或 `AppositionalPredicator`。可恢复的关系应由 `Discourse`、`Parataxis`、`Apposition` 或 lexical connector 承载；若关系不可稳定判断，只保留 punctuation boundary。
+3. 括号、方括号、引号包住同位、属性、别名、插入语或从句时，括号 / 引号本身是 `PunctuationalConstant` wrapper；内部关系按 `Attribute`、`Apposition`、`Modification`、`Discourse` 或普通谓词结构建模。
+4. 日期、时间、比分、范围、编号、地址、人名 / 专名、URL、email、货币、百分比、文件名、代码、化学式、公式等格式化表达中的 `:`, `-`, `/`, `.`, `,`, `@`, `#`, `%`, `$`, `+`, `=`, `*`, 括号等不得为了连接格式两侧而标成 `FactualPredicator`。若符号本身承担可恢复的格式组合功能，应标为 `ExpressionFunctor`：例如数字时间 / 时长 / 比分中的 `:`，日期中的 `/` / `-`，小数、版本号或姓名缩写中的 `.`, 数字千分位或日期 / 地址中的 `,`, hyphenated proper name / code 中的 `-`, URL / email / file path 中的分隔符，计算式和化学 / 生物标记中的操作符或 compact parentheses。若符号只是字段 delimiter、话语 close marker、普通句法括号 / 引号，或不可拆分符号串的一部分，则按 `PunctuationalConstant` / `SymbolConstant` 或 expression 内部成分处理。
+5. `&` 若在句中等同 `and` 连接两个并列项或命题，应标为 `ConjunctionalFunctor`；若只是品牌、代码、标题或符号串的一部分，则进入 `Expression` / `SymbolConstant`。不得标为 `LogicalPredicator`。
+6. 形式逻辑、数学或编程表达里的符号算子也应优先作为 `ExpressionFunctor`、`Expression` 部件或 `SymbolConstant` 处理；除非后续标准专门定义，不把这些符号提升为自然语言 `*Predicator`。
+
+标点 / 符号不是一律作为外层关系的 `punctuation` child。必须先判断它是否 close 某个局部成分：
+
+1. 若 `A: B`、`A - B`、`A -- B`、`A ... B` 中的标点能自然视为 `A` 的 close marker，则该标点应作为 `A` 的局部 wrapper：`p/PunctuationalConstant --as:punctuation--> A`，外层 `Parataxis` / `Apposition` / `Attribute` / `Discourse` 等关系再把 `p` 作为前项或对应论元。不得写成外层关系 `--punctuation--> p`，否则 `DESC(p)` 不能恢复被 close 的前项。
+2. 若括号、方括号、引号成对包住 `B`，则该标点 wrapper close 的是括号 / 引号内部内容：`p --as:punctuation--> B`，外层同位、属性、并置或修饰关系以 `p` 作为括号项。
+3. 只有当标点确实属于整个外层关系、无法可靠归入某个局部成分，或只是非结构性装饰时，才可作为外层关系的普通 `punctuation` child。
+
 若某个标点可以确定为 close 某个结构，该 `PunctuationalConstant` 应作为该结构的局部 root，并用 `as:punctuation` 指向被关闭的内容。close 的范围必须尽量精确：句尾标点若只关闭第二个分句，就应成为第二分句的 root，而不应上提为整句或外层 discourse relation 的 root。只有无法确定 close 范围、或标点只是非结构性装饰时，才可作为普通附着项处理。
 
 当一个节点用 `as:*` 反向边压缩表达某个关系，同时该节点还带有局部标点时，应区分“关系整体的 root”和“被标点 close 的局部成分”。若标点只关闭该节点本身所代表的局部成分，而不是关闭整个外层关系，则应优先恢复对应 aux node，并让标点作为局部 wrapper 进入 aux 的相应论元位置：
@@ -1188,6 +1230,7 @@ p/PunctuationalConstant
 | 逗号同位误解析 | major |
 | 列表标点导致枚举项遗漏 | major |
 | `as:*` 压缩关系中局部标点直接附着在 lexical node 上，导致 close 范围不清 | minor / major |
+| 纯标点 / 符号节点被标成任何 `*Predicator` | major |
 
 ---
 
@@ -1356,7 +1399,7 @@ LLM 应按以下顺序评估：
 4. **主事实检查**：找出句子的主谓词和核心事实，确认是否被正确建模。
 5. **论元检查**：检查 `pred.arg.1`、`pred.arg.2`、`pred.arg.3`、`pred.arg.4` 是否符合语义角色。
 6. **实体内部结构检查**：检查复杂名词短语是否具有 Lingua 层级结构。
-7. **特殊结构检查**：检查 `Modification`、`Expression`、`Attribute`、`Apposition`、`Ref`、`LogicalPredicator`、`Parataxis`、`List`、`Discourse`、`Vocative`、`Missing`。
+7. **特殊结构检查**：检查 `Modification`、`Expression`、`Attribute`、`Apposition`、`Ref`、`LogicalPredicator`、`Parataxis`、`List`、`Discourse`、`Vocative`，并确认不存在 `Missing` node。
 8. **可接受变体判断**：判断候选标注是否只是使用了等价简化，而非真正错误。
 9. **评分与输出**：给出 verdict、分数、错误列表和最小修正建议。
 
@@ -1591,8 +1634,7 @@ Return the evaluation JSON only.
 4. 所有 edge 的 source 和 target 必须存在。
 5. 所有 node type 和 edge label 必须合法或可规范化。
 6. 主事实谓词必须存在；但纯 structured fragment、标题、专名、field label、UI fragment 等无事实谓词样本按 fragment 规则处理，不得虚构事实谓词。
-7. 核心 predicate arguments 不得缺失；predicate node 原则上必须补足可由句内结构恢复的 `pred.arg.1`。若原句确实无对应成分、该谓词语义上不需要 `arg1`，或 subject-like participant 无法负责任恢复，不得机械添加 `pred.arg.1 -> Missing`。
-   - 例外：`AttributePredicator` 表示 field/key-value fragment 时，`pred.arg.1 -> Missing` 可以表示缺失的 attribute bearer / host entity；这不是普通事实谓词的机械主语填充。
+7. 核心 predicate arguments 不得缺失；predicate node 原则上必须补足可由句内结构恢复的 `pred.arg.1`。若原句确实无对应成分、该谓词语义上不需要 `arg1`，或 subject-like participant 无法负责任恢复，不得添加 `Missing` node；field/key-value fragment 的缺失 host 也保持缺省。
 8. 简单系表结构应合并为 `be + adjective/state complement` 谓词；补语内部副词修饰必须拆出并保持 scope 可恢复。`be` 直接接介词谓词时合并；`be` 与介词之间有其他成分时介词必须拆出；`there be` 必须拆分并以 `there` 作 `pred.arg.1`。
 9. 相对从句必须有内部谓词结构；显式 wh-word / `that` / 指代词存在时必须有 `ref/as:ref` 或等价 `Ref` 节点结构，零关系从句不得凭空添加 `Ref`。
 10. 属性结构必须明确区分 entity 与 value。

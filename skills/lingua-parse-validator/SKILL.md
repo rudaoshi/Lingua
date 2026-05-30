@@ -51,11 +51,13 @@ Procedure:
    - predicate-argument structure is semantically correct;
    - every predicate has recoverable `pred.arg.1` unless the sentence truly lacks one;
    - `pred.arg.4` is not used for ordinary purpose, reason, time, manner, or condition adjuncts;
+   - ordinary adjuncts introduced by `to` or a preposition should use that overt token as the anchored `ModificationalFunctor`; fixed complex prepositions such as `in order to`, `so as to`, `because of`, `due to`, `according to`, `in front of`, `by means of`, and `in addition to` are kept as one functor, with `variable` pointing to the core unit and `body` pointing to the introduced content;
    - modifiers attach to the smallest complete semantic unit they modify;
    - multi-layer modifiers follow semantic proximity and scope;
    - explicit wh-words, relative `that`, or referring expressions use `ref/as:ref` or `Ref`;
    - zero relative clauses do not invent `Ref`;
-   - punctuation roots close the correct local structure.
+   - punctuation roots close the correct local structure;
+   - expression-internal format separators split into recoverable parts and use the separator/operator as `ExpressionFunctor`; field/header/discourse/syntactic close punctuation remains punctuation.
 5. Produce a JSON report. Do not silently repair; report original errors and include a minimal corrected annotation in `corrected_annotation` whenever the verdict is `minor_error`, `major_error`, or `invalid` and a repair is possible.
 6. If the user requests changes, edit the data and provide before/after diffs or diagrams.
 
@@ -156,6 +158,9 @@ Principle: programmatic checks catch form errors; the model still performs lingu
 - Treat `but` as `LogicalPredicator`.
 - Treat `if` as `LogicalPredicator` for conditional "if", and `GeneralFunctor` for whether-clauses.
 - Treat `that` by function: nominal-clause marker as `GeneralFunctor`, demonstrative entity as `NominalConstant`, determiner as `DeterminerConstant`, relative marker as `GeneralFunctor`.
-- Do not convert an object to `pred.arg.1` merely because a predicate lacks an explicit subject; if the sentence has an omitted subject, report or model the omission rather than reassigning roles.
+- Do not convert an object to `pred.arg.1` merely because a predicate lacks an explicit subject. If the subject is omitted and cannot be recovered from sentence-internal structure, leave `pred.arg.1` absent; current data must not use `Missing` nodes.
+- Pure punctuation or symbol tokens must not be any `*Predicator`; use punctuation/symbol/expression structure, or lexical/auxiliary relation nodes for the relation they delimit.
+- If punctuation closes a local component, make it the wrapper of that component with `as:punctuation`; the outer relation should point to that wrapper, not merely attach the punctuation as an outer `punctuation` child.
+- Format is a functor: in dates, times, addresses, person/proper-name abbreviations, URL/email/file paths, codes, formulas, calculations, currency/percent expressions, and similar expressions, split recoverable parts and make the internal separator/operator an `ExpressionFunctor`. Keep field/header/discourse delimiters and ordinary syntactic close punctuation as punctuation close markers.
 - Treat punctuation-root warnings as low-value by default in this dataset; inspect punctuation only for local close-scope errors.
 - When uncertain, report competing analyses and confidence.

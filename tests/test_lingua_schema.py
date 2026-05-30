@@ -1,4 +1,5 @@
 import json
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -7,11 +8,17 @@ from lingua.concept.standard import (
     LinguaGraphEdges,
     LinguaGraphNodePoses,
 )
+from lingua.utils.segement import segment
 from lingua.utils.topology_sorter import LinguaGraphTopologySorter
 
 
 ROOT = Path(__file__).resolve().parents[1]
 TRAIN_PATH = ROOT / "data" / "train.jsonl"
+DATA_PATHS = [
+    TRAIN_PATH,
+    ROOT / "data" / "dev.jsonl",
+    ROOT / "data" / "test.jsonl",
+]
 
 
 def iter_train_examples():
@@ -20,8 +27,22 @@ def iter_train_examples():
             yield line_number, json.loads(line)
 
 
+def iter_lingua_examples():
+    for path in DATA_PATHS:
+        with path.open() as f:
+            for line_number, line in enumerate(f, start=1):
+                yield path.name, line_number, json.loads(line)
+
+
 def is_aux_spans(spans):
     return isinstance(spans, str)
+
+
+def node_token_indexes(node):
+    indexes = []
+    for start, end in node["spans"]:
+        indexes.extend(range(start, end + 1))
+    return indexes
 
 
 def assert_acyclic(adjacency):
@@ -74,10 +95,19 @@ def test_train_schema_labels_are_valid():
             assert 0 <= edge["end"] < len(nodes), (line_number, edge_index, edge)
             label_counts[edge["label"]] += 1
 
-    assert label_counts["nonsense"] == 2
+    assert label_counts["nonsense"] == 0
     assert label_counts.get("as:nonsense", 0) == 0
-    assert aux_counts["Ref"] == 725
-    assert aux_counts["Modification"] == 6303
+    assert aux_counts["Ref"] == 717
+    assert aux_counts["Modification"] == 6352
+
+
+def test_all_lingua_words_match_segment():
+    for filename, line_number, example in iter_lingua_examples():
+        assert example["lingua"]["words"] == segment(example["sentence"]), (
+            filename,
+            line_number,
+            example["sentence"],
+        )
 
 
 def test_train_tokens_are_partitioned_by_lexical_nodes():
@@ -136,7 +166,7 @@ def test_train_graphs_are_single_rooted_dags():
         assert len(reachable) == len(nodes), (line_number, example["sentence"])
         assert_acyclic(adjacency)
 
-    assert root_type_counts["PunctuationalConstant"] == 9425
+    assert root_type_counts["PunctuationalConstant"] == 9423
 
 
 def test_train_aux_structures_have_required_edges():
@@ -169,5 +199,49 @@ def test_train_aux_structures_have_required_edges():
                     example["sentence"],
                 )
 
-    assert aux_edge_counts["Ref"] == 725
-    assert aux_edge_counts["Modification"] == 6303
+    assert aux_edge_counts["Ref"] == 717
+    assert aux_edge_counts["Modification"] == 6352
+
+
+def test_numeric_colon_formats_use_expression_functors():
+    numeric_piece = re.compile(r"\d+(?:\.\d+)?")
+
+    for filename, line_number, example in iter_lingua_examples():
+        words = example["lingua"]["words"]
+        nodes = example["lingua"]["graph"]["nodes"]
+        token_owner = {}
+
+        for node_index, node in enumerate(nodes):
+            if is_aux_spans(node["spans"]):
+                continue
+            for token_index in node_token_indexes(node):
+                token_owner[token_index] = node_index
+
+        for token_index, word in enumerate(words):
+            if word.strip() != ":":
+                continue
+            if token_index == 0 or token_index == len(words) - 1:
+                continue
+            if not numeric_piece.fullmatch(words[token_index - 1].strip()):
+                continue
+            if not numeric_piece.fullmatch(words[token_index + 1].strip()):
+                continue
+
+            node_index = token_owner[token_index]
+            node = nodes[node_index]
+            assert node["type"] == "ExpressionFunctor", (
+                filename,
+                line_number,
+                token_index,
+                node_index,
+                node,
+                example["sentence"],
+            )
+            assert node_token_indexes(node) == [token_index], (
+                filename,
+                line_number,
+                token_index,
+                node_index,
+                node,
+                example["sentence"],
+            )

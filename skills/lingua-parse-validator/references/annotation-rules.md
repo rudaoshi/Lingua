@@ -53,7 +53,6 @@ Legal auxiliary node labels:
 - `Discourse`
 - `Expression`
 - `List`
-- `Missing`
 - `Modification`
 - `Parataxis`
 - `Ref`
@@ -94,6 +93,8 @@ R-SCHEMA-02: Every auxiliary node string must be in the legal auxiliary label in
 
 R-SCHEMA-03: Every edge label must be legal, including legal `as:` forms.
 
+R-SCHEMA-04: `Missing` nodes are not allowed. A sample must not contain `spans: "Missing"`, symbol label `Missing`, or any node used as a placeholder for an implicit entity or omitted argument.
+
 R-EDGE-01: Every edge source and target must refer to existing node IDs.
 
 R-GRAPH-01: A complete Lingua graph should have exactly one root.
@@ -118,11 +119,13 @@ R-PRED-04: Use `pred.arg.4` only for predicate-internal complements such as obje
 
 R-PRED-05: Do not use `pred.arg.4` for ordinary purpose, reason, time, manner, condition, or discourse adjuncts.
 
-R-PRED-06: Do not repair missing `pred.arg.1` by reassigning an object or complement to `pred.arg.1`. If a subject is omitted, either leave `pred.arg.1` absent with justification or add a justified `Missing` node according to the repair policy.
+R-PRED-06: Do not repair missing `pred.arg.1` by reassigning an object or complement to `pred.arg.1`. If a subject is omitted and cannot be recovered from sentence-internal structure, leave `pred.arg.1` absent with justification; do not add a `Missing` node.
 
 R-PRED-07: In ditransitives like `give me a date`, the thing given is normally `pred.arg.2` and the recipient is `pred.arg.3`.
 
 R-PRED-08: Rating or naming complements such as `rated it 5 stars` are complement/value roles, not indirect objects; prefer `pred.arg.4` or an attribute-like structure over `pred.arg.3`.
+
+R-PRED-09: A node whose visible token content is only punctuation or symbols must not be typed as `FactualPredicator`, `LogicalPredicator`, `AppositionalPredicator`, `AttributePredicator`, or `ReferentialPredicator`. Use `PunctuationalConstant`, `SymbolConstant`, `ExpressionFunctor`/`Expression`, or a lexical/auxiliary relation-bearing node instead.
 
 R-MOD-01: `Modification.variable` is the semantic unit being modified; `Modification.body` is the modifier.
 
@@ -136,11 +139,17 @@ R-MOD-05: Remove redundant `Modification` wrappers when no recoverability or sco
 
 R-MOD-06: Purpose clauses headed by infinitives such as `to push through...` usually modify the complete event they explain; do not attach them as the main predicate's object or `pred.arg.4` unless the predicate selects that complement.
 
-R-MOD-07: Reason expressions such as `because of...` are reason modifiers or logical relations, not predicate-internal complements.
+R-MOD-07: When an ordinary purpose, time, manner, or similar adjunct is introduced by overt `to` or a preposition, prefer that token as the anchored `ModificationalFunctor`: `variable` points to the core event or wrapped core event, and `body` points to the adjunct content.
+
+R-MOD-08: Fixed complex prepositions and modifier introducers are single `ModificationalFunctor` nodes when they function as modifiers. The mandatory list includes purpose/use (`in order to`, `so as to`, `in order for`, `for the purpose of`, `for purposes of`, `for the sake of`), reason/result (`because of`, `due to`, `owing to`, `thanks to`, `on account of`, `as a result of`, `by reason of`, `in view of`, `in light of`), concession/exception/replacement (`in spite of`, `regardless of`, `irrespective of`, `apart from`, `aside from`, `except for`, `instead of`, `rather than`), basis/constraint (`according to`, `pursuant to`, `in accordance with`, `in compliance with`, `in line with`, `consistent with`, `subject to`, `contrary to`), relation/topic (`with respect to`, `with regard to`, `in regard to`, `in relation to`, `relative to`, `in terms of`, `in connection with`, `with reference to`, `in reference to`, `as to`, `as for`), space/time (`in front of`, `in back of`, `on top of`, `at the top of`, `at the bottom of`, `at the end of`, `at the beginning of`, `in the middle of`, `next to`, `close to`, `far from`, `away from`, `out of`, `inside of`, `outside of`, `ahead of`, `prior to`, `subsequent to`), and means/exchange/addition (`by means of`, `by way of`, `in exchange for`, `in return for`, `in place of`, `on behalf of`, `in favor of`, `for lack of`, `in case of`, `in addition to`, `as well as`, `together with`, `along with`). Do not split these internally or add an extra unanchored `Modification` wrapper unless extra scope requires it.
+
+R-MOD-08a: Apply R-MOD-08 by construction, not by raw substring. Do not force a fixed-modifier node for homographs that belong to another construction, such as scheduled `due + infinitive` (`is due to start`), phrasal/prepositional verbs (`back/drop/come/go out of`, `get/go along with`, `shy away from`, `come away from`), rating ratios (`5 out of 5`), or adjacent but separate `next` + purpose `to`.
+
+R-MOD-09: Reason expressions such as `because of...` are reason modifiers or logical relations, not predicate-internal complements.
 
 R-REF-01: Explicit wh-words, relative `that`, or referring expressions require `ref/as:ref` or equivalent `Ref`.
 
-R-REF-02: Zero relative clauses must not invent `Ref`; connect the head entity directly to the implicit gap or use justified `Missing`.
+R-REF-02: Zero relative clauses must not invent `Ref`; connect the head entity directly to the implicit gap when recoverable, otherwise leave the gap unfilled. Do not use `Missing`.
 
 R-FUNC-01: `but` used for contrast is `LogicalPredicator`.
 
@@ -160,6 +169,16 @@ R-PUNCT-01: If punctuation clearly closes a local structure, it should be the ro
 
 R-PUNCT-02: A punctuation root is common in the current JSONL representation and is not by itself an error. It becomes an error only when the punctuation closes the wrong structure.
 
+R-PUNCT-03: Delimiters such as `:`, `-`, `--`, `...`, parentheses, brackets, quotes, slashes, and repeated punctuation may mark field boundaries, parentheticals, discourse breaks, appositions, lists, or expressions, but the semantic relation must be carried by lexical tokens or auxiliary structures such as `Attribute`, `Discourse`, `Parataxis`, `Apposition`, or `Expression`; field/discourse delimiters remain punctuation/symbol unless they are explicitly serving as expression format functors.
+
+R-PUNCT-04: `&` meaning "and" is `ConjunctionalFunctor`; `&` inside names, titles, codes, or symbol strings is an expression/symbol part. It should not be `LogicalPredicator`.
+
+R-PUNCT-05: Before attaching a punctuation or symbol node to an outer relation with `punctuation`, check whether it closes a local component. In `A: B`, `A - B`, `A -- B`, or `A ... B`, the delimiter usually closes `A`, so the outer relation should point to the punctuation wrapper and the punctuation should have `as:punctuation -> A`. For paired parentheses/brackets/quotes around `B`, the wrapper closes `B`. Use outer `punctuation` only when the mark belongs to the whole relation or cannot be localized.
+
+R-EXPR-01: Format is a functor. In dates, times, durations, scores, addresses, person/proper-name abbreviations, URL/email/file paths, model codes, chemical or biological markers, and calculation expressions, an internal separator or operator that combines recoverable parts of the expression should be an `ExpressionFunctor` with `func.arg` edges to the adjacent parts or to an inner expression functor. Do not merge the whole formatted string into one `NominalConstant` merely because it is lexicalized as a surface string.
+
+R-EXPR-02: Common format functors include numeric time/duration/score colons (`08:23`, `08:36:00`, `1:18.52`), date slashes or dashes (`06/04/01`, `1996-12-06`), decimal/version dots (`0.25`, `2.3`), numeric thousands/date/address commas (`35,000`, `March 28, 2003`, `Houston, Texas`), hyphenated proper-name/code separators (`Epstein-Barr`, `ATF-1`), URL/email/path/query separators (`/`, `.`, `@`, `?`, `=`, `&`, `#`), calculation operators, compact formula parentheses (`25(OH)D3`), currency/percent/rank symbols when they form a numeric expression, and compact biomedical suffixes such as `CD4+`. Field/header colons, discourse dashes, ordinary parentheticals, list commas, and punctuation that closes a local syntactic component remain punctuation close markers rather than expression functors.
+
 R-DESC-01: Judge wrapper arguments by descendant subgraph recoverability, not by the wrapper node alone.
 
 R-DESC-02: Descendant recoverability does not excuse wrong modifier scope or wrong inner/outer order.
@@ -170,6 +189,8 @@ R-SEM-02: Do not omit core semantic content.
 
 R-SEM-03: Treat `nonsense` as legal but low-information, not as a high-confidence semantic relation.
 
+R-SEM-03a: Dummy or extraposition `it` in patterns such as `It is interesting/easy/fair to ...` or `it is possible that ...` is analyzable; use `Ref`, `Modification`, or an equivalent recoverable structure instead of `nonsense`.
+
 R-FRAG-01: Before requiring a main factual predicate, decide whether the whole sample or a prefix/suffix is a document fragment, table/header field, UI fragment, title, or proper-name fragment.
 
 R-FRAG-02: Pure structured fragments still need token coverage, legal labels, one recoverable root, and a DAG, but they do not need an invented `FactualPredicator`, subject, object, or ordinary proposition.
@@ -178,7 +199,7 @@ R-FRAG-03: Parallel headers, table columns, menu items, and list-like labels sho
 
 R-FRAG-04: Page refs, scores, dates, times, time ranges, phone numbers, addresses, filenames, percentages, money, model codes, and similar symbol strings should be recoverable as `ExpressionFunctor`/`Expression` units when they are not ordinary sentences.
 
-R-FRAG-05: Field or key-value records should distinguish key/field label from value. When the field label is explicit, the field label token(s) must be the lexical `AttributePredicator`; its value is `pred.arg.2`, and a missing external host is represented as `pred.arg.1 -> Missing`. Do not create `Attribute(spans="Attribute") --attribute--> field_label`, and do not represent a non-predicative field label such as `Email`, `Location`, `Attendance`, `Pin #`, `Job ID`, `DATE`, `Game N`, or `Preseason Game N` as a normal `FactualPredicator` merely to connect it to the value.
+R-FRAG-05: Field or key-value records should distinguish key/field label from value. When the field label is explicit, the field label token(s) must be the lexical `AttributePredicator`; its value is `pred.arg.2`. If the external host is absent, leave `pred.arg.1` absent; do not add `Missing`. Do not create `Attribute(spans="Attribute") --attribute--> field_label`, and do not represent a non-predicative field label such as `Email`, `Location`, `Attendance`, `Pin #`, `Job ID`, `DATE`, `Game N`, or `Preseason Game N` as a normal `FactualPredicator` merely to connect it to the value.
 
 R-FRAG-06: Header, speaker label, field label, key-value label, or UI metadata must not enter the core predicate-argument frame of nearby body text unless the text explicitly makes it part of the fact.
 
@@ -186,9 +207,9 @@ R-FRAG-07: Use `nonsense` only for truly uninterpretable retained fragments, not
 
 R-FRAG-08: Low-information fragments such as greetings, signoffs, copyright notices, media boundary markers, decorative separators, clipped text, and malformed residues still have fragment semantics. Preserve them as low-information fragments unless an external dataset-cleaning policy explicitly requires removal.
 
-R-FRAG-09: Do not flatten greetings, signoffs, thanks, clipped clauses, or malformed residues into `Expression` merely because they are low-information. If ordinary syntax or ellipsis is recoverable, parse that structure first and use `Missing` only for structurally justified omissions.
+R-FRAG-09: Do not flatten greetings, signoffs, thanks, clipped clauses, or malformed residues into `Expression` merely because they are low-information. If ordinary syntax or ellipsis is recoverable, parse that structure first; unrecoverable omitted participants remain absent and must not be represented with `Missing`.
 
-R-FRAG-10: Standalone date/time/date-time/time-range fragments such as `02/27/2001 08:23 AM`, `Feb 2005`, `September 21, 2004`, `Tuesday, March 20th.`, `September 20, 1888?`, or `4:00 pm - 6:00 pm` should be represented as one recoverable `Expression` unit, with date, time, meridiem, punctuation, timezone, and range boundary as expression parts when useful. Do not model internal date-time formatting as `Modification`, `as:modification`, or a normal `FactualPredicator`.
+R-FRAG-10: Standalone date/time/date-time/time-range fragments such as `02/27/2001 08:23 AM`, `Feb 2005`, `September 21, 2004`, `Tuesday, March 20th.`, `September 20, 1888?`, or `4:00 pm - 6:00 pm` should be represented as one recoverable `Expression` unit, with date, time, meridiem, punctuation, timezone, and range boundary as expression parts when useful. Internal date/time/range separators inside these expressions follow R-EXPR-01 and R-EXPR-02. Do not model internal date-time formatting as `Modification`, `as:modification`, or a normal `FactualPredicator`.
 
 R-FRAG-11: Dateline/source rows such as `DUBLIN 1996-08-27` or `LOS ANGELES 1996-12-05` should be represented as `List(location-expression, date-expression)` or an equivalent recoverable two-field structure. The location and date are sibling metadata fields, not modifier/head, predicate/argument, or omitted-sentence relations.
 
