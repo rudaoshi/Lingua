@@ -169,6 +169,38 @@ def test_train_graphs_are_single_rooted_dags():
     assert root_type_counts["PunctuationalConstant"] == 9423
 
 
+def test_eval_graphs_are_single_rooted_dags():
+    for filename, line_number, example in iter_lingua_examples():
+        if filename == "train.jsonl":
+            continue
+
+        graph = example["lingua"]["graph"]
+        nodes = graph["nodes"]
+        indegree = [0] * len(nodes)
+        adjacency = [[] for _ in nodes]
+
+        for edge in graph["edges"]:
+            start = edge["start"]
+            end = edge["end"]
+            adjacency[start].append(end)
+            indegree[end] += 1
+
+        roots = [node_index for node_index, degree in enumerate(indegree) if degree == 0]
+        assert len(roots) == 1, (filename, line_number, roots, example["sentence"])
+
+        reachable = set()
+        stack = [roots[0]]
+        while stack:
+            node = stack.pop()
+            if node in reachable:
+                continue
+            reachable.add(node)
+            stack.extend(adjacency[node])
+
+        assert len(reachable) == len(nodes), (filename, line_number, example["sentence"])
+        assert_acyclic(adjacency)
+
+
 def test_train_aux_structures_have_required_edges():
     aux_edge_counts = Counter()
 
@@ -243,5 +275,33 @@ def test_numeric_colon_formats_use_expression_functors():
                 token_index,
                 node_index,
                 node,
+                example["sentence"],
+            )
+
+
+def test_punctuation_close_wrappers_are_not_plain_punctuation_children():
+    for filename, line_number, example in iter_lingua_examples():
+        nodes = example["lingua"]["graph"]["nodes"]
+        incoming_plain_punctuation = defaultdict(list)
+        outgoing_close_punctuation = defaultdict(list)
+
+        for edge in example["lingua"]["graph"]["edges"]:
+            if edge["label"] == "punctuation":
+                incoming_plain_punctuation[edge["end"]].append(edge)
+            elif edge["label"] == "as:punctuation":
+                outgoing_close_punctuation[edge["start"]].append(edge)
+
+        for node_index, node in enumerate(nodes):
+            if is_aux_spans(node["spans"]) or node["type"] != "PunctuationalConstant":
+                continue
+            assert not (
+                incoming_plain_punctuation.get(node_index)
+                and outgoing_close_punctuation.get(node_index)
+            ), (
+                filename,
+                line_number,
+                node_index,
+                incoming_plain_punctuation[node_index],
+                outgoing_close_punctuation[node_index],
                 example["sentence"],
             )

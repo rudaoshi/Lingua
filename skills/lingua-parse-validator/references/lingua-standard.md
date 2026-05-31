@@ -1198,6 +1198,8 @@ Koichi Morita (army officer)
 2. 若括号、方括号、引号成对包住 `B`，则该标点 wrapper close 的是括号 / 引号内部内容：`p --as:punctuation--> B`，外层同位、属性、并置或修饰关系以 `p` 作为括号项。
 3. 只有当标点确实属于整个外层关系、无法可靠归入某个局部成分，或只是非结构性装饰时，才可作为外层关系的普通 `punctuation` child。
 
+核心判定：一旦存在 `p/PunctuationalConstant --as:punctuation--> child`，就表示 `p` 是 `child` 的 close wrapper，`DESC(p)` 才是“带标点关闭的 child”。若外层谓词、functor 或 aux relation 需要这个带标点关闭的局部成分，应让外层语义边（如 `pred.arg.*`、`func.arg`、`variable`、`body`、`as:*` 展开后的对应边）指向 `p`，而不是只写成 `parent --punctuation--> p`。同一个 `p` 同时作为外层普通 `punctuation` child、又用 `as:punctuation` close 内部 `child`，通常是错误的双重身份；应改为外层关系指向 `p`，或在 `p` 已经有正确语义父边时删除冗余的 `parent --punctuation--> p`。
+
 若某个标点可以确定为 close 某个结构，该 `PunctuationalConstant` 应作为该结构的局部 root，并用 `as:punctuation` 指向被关闭的内容。close 的范围必须尽量精确：句尾标点若只关闭第二个分句，就应成为第二分句的 root，而不应上提为整句或外层 discourse relation 的 root。只有无法确定 close 范围、或标点只是非结构性装饰时，才可作为普通附着项处理。
 
 当一个节点用 `as:*` 反向边压缩表达某个关系，同时该节点还带有局部标点时，应区分“关系整体的 root”和“被标点 close 的局部成分”。若标点只关闭该节点本身所代表的局部成分，而不是关闭整个外层关系，则应优先恢复对应 aux node，并让标点作为局部 wrapper 进入 aux 的相应论元位置：
