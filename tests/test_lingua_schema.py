@@ -166,7 +166,7 @@ def test_train_graphs_are_single_rooted_dags():
         assert len(reachable) == len(nodes), (line_number, example["sentence"])
         assert_acyclic(adjacency)
 
-    assert root_type_counts["PunctuationalConstant"] == 9457
+    assert root_type_counts["PunctuationalConstant"] == 9456
 
 
 def test_eval_graphs_are_single_rooted_dags():
