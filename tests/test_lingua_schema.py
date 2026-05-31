@@ -166,7 +166,7 @@ def test_train_graphs_are_single_rooted_dags():
         assert len(reachable) == len(nodes), (line_number, example["sentence"])
         assert_acyclic(adjacency)
 
-    assert root_type_counts["PunctuationalConstant"] == 9423
+    assert root_type_counts["PunctuationalConstant"] == 9457
 
 
 def test_eval_graphs_are_single_rooted_dags():
@@ -282,10 +282,12 @@ def test_numeric_colon_formats_use_expression_functors():
 def test_punctuation_close_wrappers_are_not_plain_punctuation_children():
     for filename, line_number, example in iter_lingua_examples():
         nodes = example["lingua"]["graph"]["nodes"]
+        outgoing = defaultdict(list)
         incoming_plain_punctuation = defaultdict(list)
         outgoing_close_punctuation = defaultdict(list)
 
         for edge in example["lingua"]["graph"]["edges"]:
+            outgoing[edge["start"]].append(edge)
             if edge["label"] == "punctuation":
                 incoming_plain_punctuation[edge["end"]].append(edge)
             elif edge["label"] == "as:punctuation":
@@ -303,5 +305,25 @@ def test_punctuation_close_wrappers_are_not_plain_punctuation_children():
                 node_index,
                 incoming_plain_punctuation[node_index],
                 outgoing_close_punctuation[node_index],
+                example["sentence"],
+            )
+
+        for node_index, plain_edges in incoming_plain_punctuation.items():
+            node = nodes[node_index]
+            assert not is_aux_spans(node["spans"]) and node["type"] == "PunctuationalConstant", (
+                filename,
+                line_number,
+                node_index,
+                node,
+                plain_edges,
+                example["sentence"],
+            )
+            assert not outgoing.get(node_index), (
+                filename,
+                line_number,
+                node_index,
+                node,
+                plain_edges,
+                outgoing[node_index],
                 example["sentence"],
             )
