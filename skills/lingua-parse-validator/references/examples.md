@@ -223,12 +223,11 @@ Expected key structure:
 ```text
 Attribute/AttributePredicator
   spans -> Location
-  pred.arg.1 -> Missing
   pred.arg.2 -> Expression(Houston, ,, Texas, USA)
   punctuation -> :
 ```
 
-Reason: `Location` is the field label and therefore the lexical `AttributePredicator` itself, not `pred.arg.1`. The value is the location expression associated with that field; the external host is missing.
+Reason: `Location` is the field label and therefore the lexical `AttributePredicator` itself, not `pred.arg.1`. The value is the location expression associated with that field; the external host is not represented with a `Missing` node.
 
 ## Correct: Attendance Field Fragment
 
@@ -243,7 +242,6 @@ Expected key structure:
 ```text
 Attribute/AttributePredicator
   spans -> Attendance
-  pred.arg.1 -> Missing
   pred.arg.2 -> Expression(15, ,, 150)
   punctuation -> :
 ```
@@ -408,14 +406,7 @@ Preferred if no explicit subject is present:
 Broke out.pred.arg.2 -> the activities of 1179
 ```
 
-Possible stricter repair if the batch policy requires explicit omissions:
-
-```text
-Broke out.pred.arg.1 -> Missing
-Broke out.pred.arg.2 -> the activities of 1179
-```
-
-Reason: the surface order is `Broke out [the activities...]`, not `[the activities...] broke out`. Missing `arg1` does not license reassigning the object.
+Reason: the surface order is `Broke out [the activities...]`, not `[the activities...] broke out`. A missing `arg1` does not license reassigning the object, and current data must not add a `Missing` node.
 
 ## Incorrect: Reason Adjunct As `pred.arg.4`
 
@@ -499,7 +490,7 @@ Audit record excerpt:
       "location": "edge See -[pred.arg.1]-> you",
       "violated_rule": "R-PRED-02; R-PRED-06",
       "explanation": "`you` is the object of `See`, not the subject.",
-      "suggested_fix": "Use `See.pred.arg.2 -> you` and add an implicit subject only if the repair policy requires it.",
+      "suggested_fix": "Use `See.pred.arg.2 -> you`; leave `pred.arg.1` absent because current data must not add `Missing` nodes.",
       "confidence": 0.93
     }
   ],
@@ -513,11 +504,9 @@ Audit record excerpt:
           {"spans": [[0, 0]], "type": "FactualPredicator"},
           {"spans": [[1, 1]], "type": "NominalConstant"},
           {"spans": [[2, 2]], "type": "NominalConstant"},
-          {"spans": [[3, 3]], "type": "PunctuationalConstant"},
-          {"spans": "Missing", "type": "NominalConstant"}
+          {"spans": [[3, 3]], "type": "PunctuationalConstant"}
         ],
         "edges": [
-          {"start": 0, "end": 4, "label": "pred.arg.1"},
           {"start": 0, "end": 1, "label": "pred.arg.2"},
           {"start": 2, "end": 0, "label": "as:modification"},
           {"start": 3, "end": 2, "label": "as:punctuation"}

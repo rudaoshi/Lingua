@@ -704,6 +704,8 @@ Expression
 2. 表达式整体应可作为一个 descendant subgraph 被恢复。
 3. 数学、化学、范围、单位等符号应使用 `SymbolConstant` 或合适 constant type。
 4. 独立出现的日期、时间、日期时间、编号、比分、版本号等符号串，若内部只是格式组合而不是语义修饰，应优先作为一个 `Expression`；不得把日期修饰时间、AM/PM 修饰日期时间等格式部件误标为 `Modification` 或 `as:modification` 链。
+5. 当句面存在显式 expression operator 时，该 operator 节点本身就是这个 expression 的 root / functor。`,`、`:`、`-`、`/`、`.`、`@`、`?`、`=`、`&`、括号等若负责组合表达式部件，应标为 `ExpressionFunctor` 并直接以 `func.arg` 指向 operands；不要再额外创建 `spans: "Expression"` aux 只为了包住这个 operator。
+6. 一个 `ExpressionFunctor` 节点可以覆盖多个分隔符 token，共同表示一个 n-ary expression；`spans: "Expression"` aux 只在没有单一显式 operator，或需要组合多个已成形子表达式且句面没有可复用 functor 时使用。
 
 ---
 
@@ -951,6 +953,8 @@ include/FactualPredicator
 2. 异质枚举偏 `List`。
 3. 列表项不得遗漏。
 4. 列表整体应能作为一个论元被主谓词引用。
+5. 当枚举中有显式 list operator（`,`、`;`、`/`、`...`、可作列表分隔的 `-` 等）时，该 operator 节点本身就是 `ListFunctor` root，直接以 `func.arg` 指向各 list items；不要再额外创建 `spans: "List"` aux 只为了包住这个 operator。
+6. 一个 `ListFunctor` 可以覆盖多个分隔符 token，表示同一个 n-ary list；`spans: "List"` aux 只用于没有显式 operator 的并列/表格字段，或需要组合多个子列表/异质字段且无单一 operator token 承载时。
 
 ---
 
@@ -1054,7 +1058,7 @@ close/FactualPredicator
 基本原则：
 
 1. 若片段只是栏目名、页面标题、字段名、角色标签或界面控件文本，且不参与正文事实语义，应作为低语义权重的 discourse metadata 处理。
-2. 这类 metadata token 可以建成 `NominalConstant` 或必要时的轻量 wrapper，并通过 `as:discourse` / `discourse` 连接到正文子图，以保持 single-root DAG 与 token coverage。
+2. 这类 metadata token 可以建成 `NominalConstant` 或必要时的轻量 wrapper，并通过 `as:discourse` 连接到正文子图，以保持 single-root DAG 与 token coverage。compact JSONL 中优先使用 `context --as:discourse--> core`，其中 `context` 是 topic/header/source/speaker/discourse marker 本身或其 punctuation close wrapper；外层若需要“带语境的正文”，应指向该 `context` wrapper，使 `DESC(context)` 恢复完整话语。避免新标注写成 `core --discourse--> context`。
 3. metadata 不得作为正文事实谓词的主语、宾语、补语、普通修饰体或逻辑连接词，除非文本明确表达它参与该事实。
 4. `Overview Since 1992, P`、`Biography X was born...`、`History P` 等结构中，`Overview` / `Biography` / `History` 是 header，不应修饰 `Since`、`X` 或 `P` 的核心谓词；正文命题应独立恢复。
 5. 冒号、破折号等分隔符若只是 header 与正文的边界，应作为局部 punctuation / discourse boundary，而不是事实谓词、逻辑谓词或同位谓词。
@@ -1079,7 +1083,7 @@ Since/ModificationalFunctor
   as:discourse -> Overview
 ```
 
-或等价地由正文 root 通过 `discourse` / `as:discourse` 挂接 `Overview`，只要 `DESC(root)` 能恢复正文命题且 `Overview` 不进入核心 PFA。
+或等价地由 `Overview` 或关闭 `Overview` 的 punctuation wrapper 通过 `as:discourse` 挂接正文 root；只要 `DESC(root)` 能恢复正文命题且 `Overview` 不进入核心 PFA。新标注不使用裸 `discourse` 边表示这类 topic/header metadata。
 
 判错：
 
@@ -1110,16 +1114,17 @@ Chicago, IL 60622
 表示规则：
 
 1. 平行字段、列名、菜单项、标题列表可用 `ListFunctor` / `List` 挂接每个项目；项目之间没有事实性 predicate-argument 关系时，不得强行建立谓词。
-2. 页码、编号、比分、战绩、日期时间、时间范围、地址、电话号码、email、URL、文件名、百分比、货币数值、模型号、化学式、公式、专名缩写等常规符号串可用 `ExpressionFunctor` / `Expression` 打包为一个可恢复 expression unit。format 本身也是一种 functor：`HH:MM`、`HH:MM:SS`、`M:SS.xx`、日期、地址、姓名 / 专名、代码、计算式等表达式内部的分隔符或操作符，若负责把两侧部件组合成一个格式表达，应作为独立 `ExpressionFunctor` 连接两侧部件，不得把整个格式串无结构地合并为一个 `NominalConstant`。
-3. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录应以字段名 token 本身作为 lexical `AttributePredicator`；字段值为 `pred.arg.2`；若外部 host entity 缺失，`pred.arg.1` 保持缺省，不添加 `Missing` node。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`，也不得用 `Attribute` symbol node 加 `attribute -> field label` 重复表示字段名。
-4. 冒号、破折号、逗号、斜杠、括号、句点若只是 fragment 内部 boundary 或 close marker，应作为局部 punctuation / expression boundary，不得成为事实谓词、逻辑谓词、同位谓词、属性谓词或其他 `*Predicator`。
-5. 纯装饰符号、乱码、截断严重、问候/签名、媒体边界、版权声明等低信息片段仍有片段语义，应优先保留为低语义信息 fragment；除非上游数据集有明确的非语义清洗策略，不应仅因信息量低而过滤。
-6. 对问候、签名、感谢、残句等仍能看出普通语法或省略句结构的片段，应先按省略结构解析；若省略论元无法由句内结构恢复，则保持缺省，不添加 `Missing` node。不得因为它是邮件结束语、寒暄语或低信息文本就直接平铺为 `Expression`。
-7. `Expression`、`List`、`Attribute`、局部 punctuation root 或 `nonsense` 只应作为 fallback：当片段内部没有可负责任恢复的谓词、修饰、呼语、介词短语、字段、并列或省略关系时，才把它作为低语义信息 fragment 打包。不得把 `nonsense` 用于可按上述规则解释的正常字段或表达式。
-8. 纯 fragment 的 root 可以是普通语法结构、省略结构、`ListFunctor`、`ExpressionFunctor`、`AttributePredicator`、对应 aux node，或能关闭该 fragment 的 `PunctuationalConstant`；只要 `DESC(root)` 恢复完整 fragment 即可。
-9. 纯日期、时间、日期时间和时间范围片段，如 `02/27/2001 08:23 AM`、`Feb 2005`、`September 21, 2004`、`Tuesday, March 20th.`、`September 20, 1888?`、`4:00 pm - 6:00 pm`，应表示为一个 `Expression`，其子项可按 date / time / meridiem / range boundary 或更细粒度符号部件恢复；其中 `HH:MM` / `HH:MM:SS` 的 `:`、日期中的 `/` / `-`、小数或时长中的 `.`, 数字范围中的 `-` / `to` 等都是格式 `ExpressionFunctor`，两侧部件是其 `func.arg`。不要把 date-time 内部格式关系标成普通修饰，也不要把时间范围分隔符误标为事实谓词。
-10. 新闻 dateline 或来源行，如 `DUBLIN 1996-08-27`、`LOS ANGELES 1996-12-05`，应表示为 `List(location-expression, date-expression)` 或等价可恢复结构：location 和 date 是同一元数据行的两个字段，不是彼此的修饰体，也不是正文事实谓词的论元。
-11. 纯页码/页引用片段，如 `p. 36`、`pp. 12-15`，应作为 page-reference `Expression` 或等价可恢复表达式；不要把 `p.` 和页码误当成并列 `List` 项。
+2. 页码、编号、比分、战绩、日期时间、时间范围、地址、电话号码、email、URL、文件名、百分比、货币数值、模型号、化学式、公式、专名缩写等常规符号串可用 `ExpressionFunctor` / `Expression` 打包为一个可恢复 expression unit。format 本身也是一种 functor：`HH:MM`、`HH:MM:SS`、`M:SS.xx`、日期、地址、姓名 / 专名、代码、计算式等表达式内部的分隔符或操作符，若负责把两侧部件组合成一个格式表达，应作为独立 `ExpressionFunctor` 连接两侧部件；这个 operator 节点本身就是该 expression 的 root，不得把整个格式串无结构地合并为一个 `NominalConstant`，也不要再额外创建 `Expression` aux 只为了包住它。
+3. 列表中的显式分隔符同理：若 `,`、`;`、`/`、`...`、可作列表分隔的 `-` 等负责连接 list items，该分隔符节点应作为 `ListFunctor` root 并直接以 `func.arg` 指向各项。一个 `ListFunctor` 可以覆盖多个分隔符 token；不要把分隔符作为 `List` aux 的普通子项，也不要误当成 close punctuation。
+4. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录应以字段名 token 本身作为 lexical `AttributePredicator`；字段值为 `pred.arg.2`；若外部 host entity 缺失，`pred.arg.1` 保持缺省，不添加 `Missing` node。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`，也不得用 `Attribute` symbol node 加 `attribute -> field label` 重复表示字段名。
+5. 冒号、破折号、逗号、斜杠、括号、句点若只是 fragment 内部 boundary 或 close marker，应作为局部 punctuation / expression boundary，不得成为事实谓词、逻辑谓词、同位谓词、属性谓词或其他 `*Predicator`。
+6. 纯装饰符号、乱码、截断严重、问候/签名、媒体边界、版权声明等低信息片段仍有片段语义，应优先保留为低语义信息 fragment；除非上游数据集有明确的非语义清洗策略，不应仅因信息量低而过滤。
+7. 对问候、签名、感谢、残句等仍能看出普通语法或省略句结构的片段，应先按省略结构解析；若省略论元无法由句内结构恢复，则保持缺省，不添加 `Missing` node。不得因为它是邮件结束语、寒暄语或低信息文本就直接平铺为 `Expression`。
+8. `Expression`、`List`、`Attribute`、局部 punctuation root 或 `nonsense` 只应作为 fallback：当片段内部没有可负责任恢复的谓词、修饰、呼语、介词短语、字段、并列或省略关系时，才把它作为低语义信息 fragment 打包。不得把 `nonsense` 用于可按上述规则解释的正常字段或表达式。
+9. 纯 fragment 的 root 可以是普通语法结构、省略结构、`ListFunctor`、`ExpressionFunctor`、`AttributePredicator`、对应 aux node，或能关闭该 fragment 的 `PunctuationalConstant`；只要 `DESC(root)` 恢复完整 fragment 即可。
+10. 纯日期、时间、日期时间和时间范围片段，如 `02/27/2001 08:23 AM`、`Feb 2005`、`September 21, 2004`、`Tuesday, March 20th.`、`September 20, 1888?`、`4:00 pm - 6:00 pm`，应表示为一个 `Expression`，其子项可按 date / time / meridiem / range boundary 或更细粒度符号部件恢复；其中 `HH:MM` / `HH:MM:SS` 的 `:`、日期中的 `/` / `-`、小数或时长中的 `.`, 数字范围中的 `-` / `to` 等都是格式 `ExpressionFunctor`，两侧部件是其 `func.arg`。不要把 date-time 内部格式关系标成普通修饰，也不要把时间范围分隔符误标为事实谓词。
+11. 新闻 dateline 或来源行，如 `DUBLIN 1996-08-27`、`LOS ANGELES 1996-12-05`，应表示为 `List(location-expression, date-expression)` 或等价可恢复结构：location 和 date 是同一元数据行的两个字段，不是彼此的修饰体，也不是正文事实谓词的论元；若中间有显式字段分隔符，优先用该分隔符作为 `ListFunctor` root。
+12. 纯页码/页引用片段，如 `p. 36`、`pp. 12-15`，应作为 page-reference `Expression` 或等价可恢复表达式；不要把 `p.` 和页码误当成并列 `List` 项。
 
 判错：
 
@@ -1157,8 +1162,9 @@ Koichi Morita (army officer)
 1. 多词专名若内部组合是 lexicalized name，推荐用 `ExpressionFunctor` / `Expression` 或一个 head `NominalConstant` 加可恢复的 name-part 结构表示；不得把名和姓误作 predicate-argument。
 2. 含有职称、角色、括号说明、地理限定或消歧义说明时，可用 `Attribute`、`Apposition`、`as:modification` 或 discourse metadata 表示其对核心实体的限定；选择取决于该说明是身份属性、同位描述、地理限定还是数据源消歧义。
 3. 逗号连接的地名/机构名如 `Jordan, New York`、`Beetham Tower, Manchester` 通常不是并列列表，而是 entity + location / qualifier；不能简单当作两个无关 list items，除非上下文确实表达列表。
-4. 标题式短语如 `PHOTOS DONE WELL`、`Great Sandwiches, Great Prices` 可作为 title/list/expression；只有当上下文明确表达命题时，才解析为普通事实句。
-5. 如果专名或标题内部边界无法可靠判断，只要 token coverage 完整、root 可恢复整个名词性片段、没有添加未出现事实，可判为 acceptable variant 或 minor，不应直接判 major。
+4. 表格/赛果/名单行中出现 `name ( country/team/role ) score`、`rank. name ( country ) result` 这类结构时，括号项是前一实体的限定属性，推荐 `Attribute(pred.arg.1=name, pred.arg.2=paren-wrapper)`；外层 `List` 应把这个 `Attribute` 作为一个 field，而不是把 `name` 与括号项拆成两个 sibling `func.arg`。只有括号项出现在行首、句内没有可恢复宿主，或括号内容是整行 note（如 `( halftime 2-0 )`、`( home team in CAPS )`）时，才不要强行挂到前一实体；整行 note 应包装整行结果或 header。
+5. 标题式短语如 `PHOTOS DONE WELL`、`Great Sandwiches, Great Prices` 可作为 title/list/expression；只有当上下文明确表达命题时，才解析为普通事实句。
+6. 如果专名或标题内部边界无法可靠判断，只要 token coverage 完整、root 可恢复整个名词性片段、没有添加未出现事实，可判为 acceptable variant 或 minor，不应直接判 major。
 
 判错：
 
@@ -1188,7 +1194,7 @@ Koichi Morita (army officer)
 1. `field label: value`、`header - body`、`speaker: utterance` 中的冒号、破折号是 delimiter punctuation。字段名、标题或 speaker label 若需要建模，应由 lexical token 自身承担 `AttributePredicator`、metadata 或 discourse 角色；分隔符只挂 `punctuation` / `as:punctuation`。
 2. `A - B`、`A -- B`、`A: B`、`A ... B` 若表达解释、承接、并置或话语推进，不得把 `-`、`--`、`:`、`...` 标成 `LogicalPredicator` 或 `AppositionalPredicator`。可恢复的关系应由 `Discourse`、`Parataxis`、`Apposition` 或 lexical connector 承载；若关系不可稳定判断，只保留 punctuation boundary。
 3. 括号、方括号、引号包住同位、属性、别名、插入语或从句时，括号 / 引号本身是 `PunctuationalConstant` wrapper；内部关系按 `Attribute`、`Apposition`、`Modification`、`Discourse` 或普通谓词结构建模。
-4. 日期、时间、比分、范围、编号、地址、人名 / 专名、URL、email、货币、百分比、文件名、代码、化学式、公式等格式化表达中的 `:`, `-`, `/`, `.`, `,`, `@`, `#`, `%`, `$`, `+`, `=`, `*`, 括号等不得为了连接格式两侧而标成 `FactualPredicator`。若符号本身承担可恢复的格式组合功能，应标为 `ExpressionFunctor`：例如数字时间 / 时长 / 比分中的 `:`，日期中的 `/` / `-`，小数、版本号或姓名缩写中的 `.`, 数字千分位或日期 / 地址中的 `,`, hyphenated proper name / code 中的 `-`, URL / email / file path 中的分隔符，计算式和化学 / 生物标记中的操作符或 compact parentheses。若符号只是字段 delimiter、话语 close marker、普通句法括号 / 引号，或不可拆分符号串的一部分，则按 `PunctuationalConstant` / `SymbolConstant` 或 expression 内部成分处理。
+4. 日期、时间、比分、范围、编号、地址、人名 / 专名、URL、email、货币、百分比、文件名、代码、化学式、公式等格式化表达中的 `:`, `-`, `/`, `.`, `,`, `@`, `#`, `%`, `$`, `+`, `=`, `*`, 括号等不得为了连接格式两侧而标成 `FactualPredicator`。若符号本身承担可恢复的格式组合功能，应标为 `ExpressionFunctor`：例如数字时间 / 时长 / 比分中的 `:`，日期中的 `/` / `-`，小数、版本号或姓名缩写中的 `.`, 数字千分位或日期 / 地址中的 `,`, hyphenated proper name / code 中的 `-`, URL / email / file path 中的分隔符，计算式和化学 / 生物标记中的操作符或 compact parentheses。列表分隔符若连接 list items，应同理作为 `ListFunctor` root。若符号只是字段 delimiter、话语 close marker、普通句法括号 / 引号，或不可拆分符号串的一部分，则按 `PunctuationalConstant` / `SymbolConstant` 或 expression/list 内部成分处理。
 5. `&` 若在句中等同 `and` 连接两个并列项或命题，应标为 `ConjunctionalFunctor`；若只是品牌、代码、标题或符号串的一部分，则进入 `Expression` / `SymbolConstant`。不得标为 `LogicalPredicator`。
 6. 形式逻辑、数学或编程表达里的符号算子也应优先作为 `ExpressionFunctor`、`Expression` 部件或 `SymbolConstant` 处理；除非后续标准专门定义，不把这些符号提升为自然语言 `*Predicator`。
 
@@ -1222,6 +1228,8 @@ p/PunctuationalConstant
 ```
 
 其中 `p` 的 `DESC(p)` 恢复被标点关闭的局部修饰体（如 `Now,`），`Modification` 才恢复“带标点的修饰体修饰 y”的外层关系。`as:discourse`、`as:vocative` 等同理：先恢复 `Discourse` / `Vocative` 等 aux node，再把局部标点 wrapper 放入 `body` 或对应局部成分位置。不得把局部逗号、引号、括号等直接作为整个外层关系的 root，除非该标点确实 close 整个外层关系。
+
+`as:*` 是 auxiliary relation 的压缩边。凡是出现 `A --as:*--> B`，`A` 的 outgoing edge 必须且只能是这一条 `as:*` 边；`A` 不得同时还有 `func.arg`、`pred.arg.*`、`variable`、`body`、`repeat`、`punctuation` 或第二条 `as:*` 子边。若 `A` 自身需要内部结构（如 `ExpressionFunctor` 还要连接 `func.arg`，标点 wrapper 还要 `as:punctuation` close 局部成分，或谓词仍有论元），不得使用压缩 `as:*`，必须显式恢复对应 aux node：例如用 `Modification(variable=B, body=A)` 表示带内部结构的 modifier，用 `Discourse(variable=core, body=context-wrapper)` 表示带局部 close punctuation 的 discourse/topic/header。压缩 `as:*` 只用于 source `A` 是无其他子节点的原子/叶子 wrapper 的情况。
 
 判错：
 

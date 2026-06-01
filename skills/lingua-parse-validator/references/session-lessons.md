@@ -17,9 +17,10 @@ These are calibrated lessons from aligning the Lingua standard with existing JSO
 - Descendant subgraph semantics are central: judge wrappers by `DESC(v)` recoverability, but still enforce modifier proximity and scope order.
 - Explicit wh-words, relative `that`, or referring expressions require `Ref` or `ref/as:ref`; zero relatives must not invent `Ref`.
 - Punctuation that clearly closes a local structure should root that local closed structure.
+- Current data must not contain `Missing` nodes. Unrecoverable omitted subjects, field hosts, and implicit participants stay absent rather than being represented by `Missing`.
 - Pure structured fragments such as table headers, scores, page refs, schedule rows, addresses, filenames, and UI labels are not ordinary sentences; they may be rooted as `List`, `Expression`, `Attribute`, or low-information fragment structures without an invented `FactualPredicator`.
 - Greetings, signoffs, copyright notices, media boundary markers, decorative separators, clipped text, and malformed residues still have fragment semantics. Do not filter them merely for low semantic density; preserve them as low-information fragments unless a separate dataset-cleaning policy says otherwise.
-- Low-information does not imply `Expression` flattening. For greetings, signoffs, thanks, clipped clauses, and malformed residues, first try an ordinary or elliptical parse with justified `Missing`; use `Expression` only when no more specific syntactic or semantic relation can be recovered.
+- Low-information does not imply `Expression` flattening. For greetings, signoffs, thanks, clipped clauses, and malformed residues, first try an ordinary or elliptical parse; use `Expression` only when no more specific syntactic or semantic relation can be recovered.
 - Proper names, titles, and nominal fragments without explicit predicates should not be forced into copula/factual-predicate graphs; preserve the entity/title expression and any qualifier relation.
 
 ## Repaired Pattern Library
@@ -62,7 +63,7 @@ Rating complement:
 - Earlier attempted repair changed `the activities of 1179` from `pred.arg.2` to `pred.arg.1`.
 - That was retracted.
 - Surface order favors an omitted-subject transitive reading: `[someone/it] broke out the activities...`
-- If a stricter policy requires explicit subjects, add or propose `Missing` for `arg1`; do not promote the object to subject.
+- Current policy leaves the omitted `arg1` absent; do not add `Missing`, and do not promote the object to subject.
 
 ## Audit Process Lesson
 

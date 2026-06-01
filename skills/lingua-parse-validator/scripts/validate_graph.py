@@ -38,7 +38,6 @@ AUX_LABELS = {
     "Discourse",
     "Expression",
     "List",
-    "Missing",
     "Modification",
     "Parataxis",
     "Ref",
@@ -164,6 +163,7 @@ def validate_graph(line: int | None, sample: dict[str, Any]) -> list[dict[str, A
     adjacency = [[] for _ in nodes]
     indegree = [0] * len(nodes)
     outgoing: dict[int, list[str]] = defaultdict(list)
+    outgoing_edges: dict[int, list[tuple[int, int, str]]] = defaultdict(list)
     for index, edge in enumerate(edges):
         label = edge.get("label")
         start = edge.get("start")
@@ -179,6 +179,7 @@ def validate_graph(line: int | None, sample: dict[str, Any]) -> list[dict[str, A
         adjacency[start].append(end)
         indegree[end] += 1
         outgoing[start].append(label)
+        outgoing_edges[start].append((index, end, label))
 
     roots = [index for index, degree in enumerate(indegree) if degree == 0]
     if len(nodes) and len(roots) != 1:
@@ -221,6 +222,19 @@ def validate_graph(line: int | None, sample: dict[str, Any]) -> list[dict[str, A
             add(errors, "AUX_STRUCTURE_ERROR", f"{line}:nodes[{index}]", "Modification requires variable and body")
         if spans == "Ref" and not {"pred.arg.1", "pred.arg.2"} <= labels:
             add(errors, "AUX_STRUCTURE_ERROR", f"{line}:nodes[{index}]", "Ref requires pred.arg.1 and pred.arg.2")
+
+        as_edges = [edge for edge in outgoing_edges.get(index, []) if edge[2].startswith("as:")]
+        if as_edges and len(outgoing_edges.get(index, [])) != 1:
+            edge_summary = ", ".join(
+                f"edges[{edge_index}] {label}->nodes[{end}]"
+                for edge_index, end, label in outgoing_edges[index]
+            )
+            add(
+                errors,
+                "AS_SHORTHAND_STRUCTURE_ERROR",
+                f"{line}:nodes[{index}]",
+                f"node with outgoing as:* shorthand must have exactly one outgoing edge; found {edge_summary}",
+            )
 
     return errors
 
