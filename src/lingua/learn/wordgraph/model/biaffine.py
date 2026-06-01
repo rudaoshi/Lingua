@@ -1,40 +1,21 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence, Tuple
 import logging
 
 import torch
 import torch.nn as nn
 
 logger = logging.getLogger(__name__)
-# ============================================================================
-# Edge Label Constants
-# ============================================================================
-
-# ============================================================================
-# Node Type Constants
-# ============================================================================
-
-# Node types (pos) in word-lingua-graph
-NODE_TYPES = [
-    "NominalConstant",
-    "FactualPredicator", 
-    "ModificationalFunctor",
-    "PunctuationalConstant",
-    "DeterminerConstant",
-    "ModificationalConstant",
-    "ConjunctionalFunctor",
-    "GeneralFunctor",
-    "LogicalPredicator",
-    "ExpressionFunctor",
-    "SymbolConstant",
-    "OtherConstant",
-    "InterjectionConstant",
-    "AttributePredicator",
-]
-
-# Build node type mappings
-NODE_TYPE2ID = {nt: i for i, nt in enumerate(NODE_TYPES)}
-NODE_TYPE2ID["UNK"] = len(NODE_TYPES)
-ID2NODE_TYPE = {v: k for k, v in NODE_TYPE2ID.items()}
+def build_node_type_maps(node_types: Sequence[str]) -> Tuple[Dict[str, int], Dict[int, str]]:
+    """Build node type mappings from an externally supplied vocabulary."""
+    node_types = list(node_types)
+    if not node_types:
+        raise ValueError("node_types must not be empty")
+    duplicates = sorted({nt for nt in node_types if node_types.count(nt) > 1})
+    if duplicates:
+        raise ValueError(f"Duplicate node types: {duplicates}")
+    node_type2id = {nt: i for i, nt in enumerate(node_types)}
+    id2node_type = {v: k for k, v in node_type2id.items()}
+    return node_type2id, id2node_type
 
 
 # ============================================================================
@@ -194,20 +175,24 @@ class WordLinguaParserV2(nn.Module):
     - Root node is learned through graph structure (arc/relation prediction)
     """
     
-    def __init__(self, label_num: int,
+    def __init__(self, label_num: Optional[int] = None,
+                 num_node_types: Optional[int] = None,
+                 edge_types: Optional[Sequence[str]] = None,
+                 node_types: Optional[Sequence[str]] = None,
                  init_bert_model_name: Optional[str] = None,
-                 num_node_types: int = len(NODE_TYPE2ID),
                  arc_hidden_size: int = 500, rel_hidden_size: int = 100,
                  node_hidden_size: int = 256,
                  dropout: float = 0.1, word_pooling: str = "mean",
                  pretrained_model_path: Optional[str] = None):
         """
         Args:
-            label_num: Number of relation labels
+            label_num: Number of relation labels. Derived from edge_types when provided.
+            num_node_types: Number of node types. Derived from node_types when provided.
+            edge_types: Ordered edge label vocabulary supplied by training/loading code.
+            node_types: Ordered node type vocabulary supplied by training/loading code.
             init_bert_model_name: Name of BERT model to download from HuggingFace Hub
                                  for model initialization (e.g., 'bert-base-cased').
                                  Used only during training. Ignored if pretrained_model_path is provided.
-            num_node_types: Number of node types
             arc_hidden_size: Hidden size for arc prediction
             rel_hidden_size: Hidden size for relation prediction
             node_hidden_size: Hidden size for node classifiers
@@ -218,6 +203,16 @@ class WordLinguaParserV2(nn.Module):
                                   and weights are loaded separately via load_state_dict.
         """
         super().__init__()
+        self.edge_types = list(edge_types) if edge_types is not None else None
+        self.node_types = list(node_types) if node_types is not None else None
+        if self.edge_types is not None:
+            label_num = len(self.edge_types)
+        if self.node_types is not None:
+            num_node_types = len(self.node_types)
+        if label_num is None or label_num <= 0:
+            raise ValueError("label_num must be positive")
+        if num_node_types is None or num_node_types <= 0:
+            raise ValueError("num_node_types must be positive")
         
         from transformers import AutoModel, AutoConfig
         import json
@@ -392,4 +387,3 @@ class WordLinguaParserV2(nn.Module):
             "node_type_logits": node_type_logits,
             "is_root_logits": is_root_logits,
         }
-

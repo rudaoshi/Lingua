@@ -79,3 +79,17 @@ def test_ensure_single_rooted_dag_connects_extra_roots_with_fallback_edge():
     assert len(root_texts(graph)) == 1
     assert "nonsense" in [edge.label for _, edge, _ in graph.edges()]
     assert graph.meta["word2gp_repairs"][0]["type"] == "multiple_roots"
+
+
+def test_ensure_single_rooted_dag_does_not_prefer_punctuation_root():
+    graph = GPGraph()
+    graph.words = ["runs", "."]
+    predicate = graph.add_node(GPGPhraseNode(spans=[(0, 0)], pos="FactualPredicator"))
+    punctuation = graph.add_node(GPGPhraseNode(spans=[(1, 1)], pos="PunctuationalConstant"))
+
+    _, updated = ensure_single_rooted_dag(graph)
+
+    assert updated
+    assert root_texts(graph) == ["runs"]
+    assert graph.get_edge(predicate, punctuation).label == "nonsense"
+    assert graph.meta["word2gp_repairs"][0]["primary_root"] == "runs"

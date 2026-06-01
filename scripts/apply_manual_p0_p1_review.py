@@ -68,15 +68,13 @@ def fix_dev_236(sample: dict[str, Any]) -> str:
             node([[0, 1]], "NominalConstant"),
             node([[4, 4]], "PunctuationalConstant"),
             node([[2, 3]], "FactualPredicator"),
-            node("Missing", "NominalConstant"),
         ],
         [
-            edge(2, 3, "pred.arg.1"),
             edge(0, 2, "as:discourse"),
             edge(1, 0, "as:punctuation"),
         ],
     )
-    return "treat list marker as discourse metadata and give imperative an implicit subject"
+    return "treat list marker as discourse metadata and leave the omitted imperative subject absent"
 
 
 def fix_dev_751(sample: dict[str, Any]) -> str:
@@ -250,19 +248,7 @@ def fix_train_5824(sample: dict[str, Any]) -> str:
 
 def fix_train_5597(sample: dict[str, Any]) -> str:
     """Sentence-initial `But` has an omitted left discourse argument."""
-    nodes = graph(sample)["nodes"]
-    for index, existing in enumerate(nodes):
-        if existing == node("Missing", "NominalConstant"):
-            missing_index = index
-            break
-    else:
-        nodes.append(node("Missing", "NominalConstant"))
-        missing_index = len(nodes) - 1
-    for item in graph(sample)["edges"]:
-        if item == {"start": 0, "end": missing_index, "label": "pred.arg.1"}:
-            return "Missing pred.arg.1 for sentence-initial `But` already present"
-    graph(sample)["edges"].append(edge(0, missing_index, "pred.arg.1"))
-    return "add Missing pred.arg.1 for sentence-initial `But`"
+    return "leave sentence-initial `But` without an invented external pred.arg.1"
 
 
 def fix_train_4304(sample: dict[str, Any]) -> str:

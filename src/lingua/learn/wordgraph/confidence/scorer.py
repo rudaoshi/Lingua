@@ -77,10 +77,10 @@ def build_gold_wordgraph_example(
     item: Dict[str, Any],
     *,
     label2id: Dict[str, int],
+    node_type2id: Dict[str, int],
 ) -> GoldWordGraphExample:
     """Convert a serialized Lingua sample into wordgraph gold labels."""
 
-    from lingua.learn.wordgraph.model.biaffine import NODE_TYPE2ID
     from lingua.learn.wordgraph.modeler.gp2word import lingua2wordlingua
     from lingua.structure.gpgraph import GPGraph
 
@@ -92,7 +92,7 @@ def build_gold_wordgraph_example(
     num_words = len(words)
     arc_labels = [[-1] * num_words for _ in range(num_words)]
     child_of_whether = [0] * num_words
-    node_type = [NODE_TYPE2ID["UNK"]] * num_words
+    node_type = [-1] * num_words
     unknown_edge_labels: List[str] = []
 
     for node in word_lingua_graph.nodes():
@@ -101,7 +101,14 @@ def build_gold_wordgraph_example(
             continue
         if getattr(node, "child_of_whether", False):
             child_of_whether[word_idx] = 1
-        node_type[word_idx] = NODE_TYPE2ID.get(getattr(node, "pos", None), NODE_TYPE2ID["UNK"])
+        pos = getattr(node, "pos", None)
+        if pos not in node_type2id:
+            raise ValueError(f"Unknown node type in gold sample: {pos}")
+        node_type[word_idx] = node_type2id[pos]
+
+    missing_node_type = [idx for idx, type_id in enumerate(node_type) if type_id < 0]
+    if missing_node_type:
+        raise ValueError(f"Missing node type labels for word indices: {missing_node_type}")
 
     for parent, edge, child in word_lingua_graph.edges():
         parent_idx = _single_phrase_word_idx(parent, num_words)
@@ -112,8 +119,8 @@ def build_gold_wordgraph_example(
         if edge_label in label2id:
             label_id = label2id[edge_label]
         else:
-            label_id = label2id.get("UNK", 0)
             unknown_edge_labels.append(edge_label)
+            raise ValueError(f"Unknown edge label in gold sample: {edge_label}")
         arc_labels[parent_idx][child_idx] = label_id
 
     indegree = [0] * num_words
@@ -327,7 +334,11 @@ def score_file(
             "sentence": item.get("sentence", manifest_row.get("sentence", "")),
         }
         try:
-            gold = build_gold_wordgraph_example(item, label2id=inference.label2id)
+            gold = build_gold_wordgraph_example(
+                item,
+                label2id=inference.label2id,
+                node_type2id=inference.node_type2id,
+            )
             score = score_gold_example(inference=inference, example=gold, weights=weights)
             scored_records.append({**base_record, **score, "error": None})
         except Exception as exc:  # pragma: no cover - exercised by CLI failure mode

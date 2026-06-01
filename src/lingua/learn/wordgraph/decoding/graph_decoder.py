@@ -7,7 +7,6 @@ from lingua.learn.wordgraph.decoding.statistics import WordLinguaStatistics
 from lingua.learn.wordgraph.decoding.visualizer import ProbabilityAwareVisualizer, GPGraphVisualizer
 from lingua.learn.wordgraph.decoding.validator import EdgeValidationCode
 from lingua.learn.wordgraph.decoding.validator import EdgeValidator
-from lingua.learn.wordgraph.model.biaffine import NODE_TYPE2ID, ID2NODE_TYPE
 
 
 import logging 
@@ -35,6 +34,7 @@ class GreedyPatternDecoder:
                  lam_sibling_prob: float = 1.0,
                  lam_pos_prob: float = 1.0,
                  lam_parent_given_child_prob: float = 1.0,
+                 id2node_type: Optional[Dict[int, str]] = None,
                  debug: bool = False,
                  debug_dir: Optional[str] = None,
                  debug_example_id: Optional[int] = None):
@@ -49,6 +49,9 @@ class GreedyPatternDecoder:
         self.lam_sibling_prob = float(lam_sibling_prob)
         self.lam_pos_prob = float(lam_pos_prob)
         self.lam_parent_given_child_prob = float(lam_parent_given_child_prob)
+        if id2node_type is None:
+            raise ValueError("id2node_type must be provided by the loaded model vocabulary")
+        self.id2node_type = id2node_type
         self.debug = debug
         self.debug_dir = debug_dir
         self.debug_example_id = debug_example_id
@@ -239,9 +242,13 @@ class GreedyPatternDecoder:
             "phase4_add_edge_failures": [],
         }
         
-        # Get node types
-        node_types = [ID2NODE_TYPE.get(node_type_preds[i], "NominalConstant")
-                      for i in range(num_words)]
+        # Get node types from the model bundle vocabulary.
+        node_types = []
+        for i in range(num_words):
+            type_id = int(node_type_preds[i])
+            if type_id not in self.id2node_type:
+                raise ValueError(f"Predicted node type id is not in model vocabulary: {type_id}")
+            node_types.append(self.id2node_type[type_id])
         
         # Convert logits to probabilities
         arc_probs = self._sigmoid(arc_logits)
@@ -1041,6 +1048,9 @@ class GreedyPatternDecoder:
             *,
             context: str = "phase4",
             meta: Optional[Dict[str, Any]] = None,
+            validation_mode: str = "phase3",
+            check_pattern: bool = True,
+            allow_topology_only: bool = False,
         ) -> bool:
             """Add edge p_idx->c_idx with given label if valid; update graph and tracking.
 
@@ -1063,20 +1073,34 @@ class GreedyPatternDecoder:
                     })
                 return False
 
-            # Keep constraints conservative: use strict rules unless it is impossible.
+            # Keep constraints conservative by default. The final single-root
+            # repair may intentionally relax non-topological constraints as a
+            # last resort, but it must still preserve DAG topology.
             code = validator.validate(
                 p_idx, c_idx, label,
-                mode="phase3",
+                mode=validation_mode,
                 check_cycle=True,
-                check_pattern=True,
+                check_pattern=check_pattern,
             )
-            if code != EdgeValidationCode.OK:
+            if code != EdgeValidationCode.OK and not allow_topology_only:
                 if self.debug and context != "phase4_rollback":
                     decoding_info["phase4_add_edge_failures"].append({
                         "parent": int(p_idx),
                         "child": int(c_idx),
                         "label": str(label),
                         "reason": "validator rejected",
+                        "validator_code": str(code.name),
+                        "context": str(context),
+                        "meta": meta,
+                    })
+                return False
+            if code != EdgeValidationCode.OK and allow_topology_only and would_create_cycle(p_idx, c_idx):
+                if self.debug and context != "phase4_rollback":
+                    decoding_info["phase4_add_edge_failures"].append({
+                        "parent": int(p_idx),
+                        "child": int(c_idx),
+                        "label": str(label),
+                        "reason": "topology-only repair would create cycle",
                         "validator_code": str(code.name),
                         "context": str(context),
                         "meta": meta,
@@ -1116,6 +1140,179 @@ class GreedyPatternDecoder:
                 "score_struct": score,
             })
             return True
+
+        def _current_roots() -> List[int]:
+            return [
+                i
+                for i in range(num_words)
+                if graph.g.in_degree(word_to_node[i].ID) == 0
+            ]
+
+        def _root_reachable_nodes(root: int) -> set:
+            reachable, _ = _bfs_tree(int(root))
+            return set(reachable.keys())
+
+        def _best_label_for_pair(
+            p_idx: int,
+            c_idx: int,
+            *,
+            mode: str,
+            check_pattern_for_mode: bool,
+            topology_only: bool = False,
+        ) -> Optional[Tuple[str, float, str]]:
+            rel_vec = rel_probs[p_idx, c_idx]
+            for lid in np.argsort(rel_vec)[::-1]:
+                lbl = self.id2label.get(int(lid), "UNK")
+                if lbl == "UNK" or lbl == "nonsense":
+                    continue
+                code = validator.validate(
+                    p_idx,
+                    c_idx,
+                    lbl,
+                    mode=mode,
+                    check_cycle=True,
+                    check_pattern=check_pattern_for_mode,
+                )
+                if code == EdgeValidationCode.OK:
+                    return lbl, float(rel_vec[lid]), "valid"
+                if topology_only and not would_create_cycle(p_idx, c_idx):
+                    return lbl, float(rel_vec[lid]), f"topology_only:{code.name}"
+            return None
+
+        def _choose_primary_decoded_root(roots: List[int]) -> int:
+            if not roots:
+                return int(root_idx)
+            if int(phase4_root_idx) in roots:
+                return int(phase4_root_idx)
+            if int(root_idx) in roots:
+                return int(root_idx)
+            dist_to_model_root = _dist_to_pred_root()
+            reachable_roots = [int(r) for r in roots if int(r) in dist_to_model_root]
+            if reachable_roots:
+                return int(min(reachable_roots, key=lambda r: (dist_to_model_root[int(r)], int(r))))
+            return int(min(roots))
+
+        def _force_single_root() -> None:
+            """Attach remaining decoded roots with the best model-scored edge."""
+            max_rounds = max(1, num_words)
+            for _ in range(max_rounds):
+                roots = _current_roots()
+                if len(roots) <= 1:
+                    return
+
+                primary = _choose_primary_decoded_root(roots)
+                anchored_nodes = _root_reachable_nodes(primary)
+                if not anchored_nodes:
+                    anchored_nodes = {primary}
+
+                changed = False
+                for head_idx in sorted(int(r) for r in roots if int(r) != int(primary)):
+                    best = None
+                    best_score = -float("inf")
+
+                    # Prefer attaching from the primary root branch, then fall back
+                    # to any non-head node. The child is fixed to the extra root so
+                    # root count monotonically decreases when an edge is added.
+                    parent_groups = [
+                        sorted(int(p) for p in anchored_nodes if int(p) != head_idx),
+                        sorted(int(p) for p in range(num_words) if int(p) != head_idx),
+                    ]
+                    seen_parents = set()
+                    for parents in parent_groups:
+                        for p_idx in parents:
+                            if p_idx in seen_parents:
+                                continue
+                            seen_parents.add(p_idx)
+                            if graph.g.has_edge(word_to_node[p_idx].ID, word_to_node[head_idx].ID):
+                                continue
+
+                            for mode, check_pattern_for_mode, topology_only in (
+                                ("phase3", True, False),
+                                ("phase4_forced", False, False),
+                                ("phase4_forced", False, True),
+                            ):
+                                found = _best_label_for_pair(
+                                    p_idx,
+                                    head_idx,
+                                    mode=mode,
+                                    check_pattern_for_mode=check_pattern_for_mode,
+                                    topology_only=topology_only,
+                                )
+                                if found is None:
+                                    continue
+                                lbl, rel_prob, repair_mode = found
+                                arc_prob = float(arc_probs[p_idx, head_idx])
+                                score = _edge_score(p_idx, head_idx, lbl, arc_prob, rel_prob)
+                                if score > best_score:
+                                    best_score = score
+                                    best = (
+                                        p_idx,
+                                        head_idx,
+                                        lbl,
+                                        mode,
+                                        check_pattern_for_mode,
+                                        topology_only,
+                                        repair_mode,
+                                        arc_prob,
+                                        rel_prob,
+                                        score,
+                                    )
+                                break
+
+                    if best is None:
+                        decoding_info["errors"].append(
+                            f"Unable to attach extra root {head_idx} ({words[head_idx] if head_idx < len(words) else head_idx})"
+                        )
+                        continue
+
+                    (
+                        p_idx,
+                        c_idx,
+                        lbl,
+                        mode,
+                        check_pattern_for_mode,
+                        topology_only,
+                        repair_mode,
+                        arc_prob,
+                        rel_prob,
+                        score,
+                    ) = best
+                    added = _add_edge(
+                        p_idx,
+                        c_idx,
+                        lbl,
+                        context="single_root_repair",
+                        validation_mode=mode,
+                        check_pattern=check_pattern_for_mode,
+                        allow_topology_only=topology_only,
+                        meta={
+                            "primary_root": int(primary),
+                            "head": int(head_idx),
+                            "repair_mode": repair_mode,
+                        },
+                    )
+                    if not added:
+                        decoding_info["errors"].append(
+                            f"Unable to add selected single-root repair {p_idx}->{c_idx} label='{lbl}'"
+                        )
+                        continue
+
+                    changed = True
+                    decoding_info.setdefault("single_root_repairs", []).append({
+                        "parent": int(p_idx),
+                        "child": int(c_idx),
+                        "label": str(lbl),
+                        "primary_root": int(primary),
+                        "mode": str(mode),
+                        "repair_mode": str(repair_mode),
+                        "arc_prob": float(arc_prob),
+                        "rel_prob": float(rel_prob),
+                        "score": float(score),
+                    })
+                    anchored_nodes |= _root_reachable_nodes(primary)
+
+                if not changed:
+                    return
 
         # Choose R for Phase 4:
         # among decoded roots (in-degree 0), pick the one with the shortest directed path to model root_idx.
@@ -1300,6 +1497,11 @@ class GreedyPatternDecoder:
                         )
             if not any_change:
                 break
+
+        # Phase 4b: enforce the decoder contract. Phase 3 guarantees weak
+        # connectivity only, and the Phase 4 common-child rewrite is heuristic;
+        # any remaining extra roots must get a model-scored incoming edge here.
+        _force_single_root()
         
         # if unreachable:
         #     logger.debug(f"Phase 4: Connecting {len(unreachable)} disconnected nodes")
@@ -1541,6 +1743,7 @@ class GreedyPatternDecoder:
             or decoding_info["phase4_force_connects"]
             or decoding_info.get("phase3_failures")
             or decoding_info.get("phase4_add_edge_failures")
+            or decoding_info.get("single_root_repairs")
         ):
             decoding_info["has_issues"] = True
         else:
@@ -1563,7 +1766,7 @@ class GreedyPatternDecoder:
     PRIMARY_AT_EDGES = {
         "@modification_of", "@appositive_of", "@attribute_of", 
         "@copula", "@discourse_of", "@expression", "@list", 
-        "@missing", "@parataxis", "@ref_of", "@vocative_of"
+        "@parataxis", "@ref_of", "@vocative_of"
     }
     
     # List-like edges that can form chains
@@ -1781,7 +1984,7 @@ class GreedyPatternDecoder:
                     errors.append(f"Invalid edge label component: '{component}' in '{edge_label}'")
         
         # 2. Check node types
-        allowed_node_types = set(ID2NODE_TYPE.values())
+        allowed_node_types = set(self.id2node_type.values())
         for node in list(graph.nodes()):
             if hasattr(node, 'pos') and node.pos:
                 if node.pos not in allowed_node_types:
@@ -1818,4 +2021,3 @@ class GreedyPatternDecoder:
         x_max = np.max(x, axis=axis, keepdims=True)
         exp_x = np.exp(x - x_max)
         return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
-

@@ -33,7 +33,6 @@ from lingua.learn.wordgraph.decoding.inference import (
     forward_words,
 )
 from lingua.learn.wordgraph.decoding.mst_decoder import MSTDecoder
-from lingua.learn.wordgraph.model.biaffine import ID2NODE_TYPE
 
 
 @dataclass(frozen=True)
@@ -373,15 +372,20 @@ def mst_to_gpgraph(
     if len(mst.heads) != n:
         raise ValueError(f"len(words)={n} but len(heads)={len(mst.heads)}")
 
-    if id2node_type is None:
-        id2node_type = ID2NODE_TYPE
     if id2label is None:
         id2label = {}
 
     # Node POS
     if node_type_logits_1 is not None and node_type_logits_1.shape[0] >= n:
+        if id2node_type is None:
+            raise ValueError("id2node_type must be provided when node_type_logits_1 is supplied")
         node_type_pred = node_type_logits_1[:n].argmax(dim=-1).tolist()
-        node_pos = [id2node_type.get(int(t), "NominalConstant") for t in node_type_pred]
+        node_pos = []
+        for t in node_type_pred:
+            type_id = int(t)
+            if type_id not in id2node_type:
+                raise ValueError(f"Predicted node type id is not in model vocabulary: {type_id}")
+            node_pos.append(id2node_type[type_id])
     else:
         node_pos = ["NominalConstant"] * n
 
@@ -431,6 +435,7 @@ def predict_mst_gpgraph(
     device: str,
     max_length: int,
     id2label: Dict[int, str],
+    id2node_type: Dict[int, str],
 ) -> Tuple[GPGraph, MSTDecodeResult, WordLinguaModelOutputs]:
     """
     End-to-end helper: encode words, run the model, MST-decode, and convert to GPGraph.
@@ -455,6 +460,7 @@ def predict_mst_gpgraph(
         mst=mst,
         node_type_logits_1=outs.node_type_logits[0] if outs.node_type_logits is not None else None,
         child_of_whether_logits_1=outs.child_of_whether_logits[0] if outs.child_of_whether_logits is not None else None,
+        id2node_type=id2node_type,
         id2label=id2label,
     )
 
@@ -488,5 +494,3 @@ if __name__ == "__main__":
     print("heads:", mst_ex.heads)
     print("labels:", mst_ex.labels)
     print("num_edges:", len(list(g_ex.edges())))
-
-

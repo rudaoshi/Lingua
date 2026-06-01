@@ -37,6 +37,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def edge_f1_from_counts(matched_edge_num: int, pred_edge_num: int, true_edge_num: int) -> float:
+    if pred_edge_num + true_edge_num == 0:
+        return 1.0
+    return 2 * matched_edge_num / (pred_edge_num + true_edge_num)
+
+
 def load_samples(data_path: str) -> List[Dict[str, Any]]:
     """
     Load samples from JSONL file.
@@ -317,9 +323,11 @@ def main():
                     
                     # Store metric for sorting
                     # Calculate Edge F1 for sorting
-                    edge_precision = lingua_metric["matched_edge_num"] / (lingua_metric["pred_edge_num"] + 1e-8)
-                    edge_recall = lingua_metric["matched_edge_num"] / (lingua_metric["true_edge_num"] + 1e-8)
-                    edge_f1 = 2 * edge_precision * edge_recall / (edge_precision + edge_recall + 1e-8)
+                    edge_f1 = edge_f1_from_counts(
+                        lingua_metric["matched_edge_num"],
+                        lingua_metric["pred_edge_num"],
+                        lingua_metric["true_edge_num"],
+                    )
                     lingua_metric["edge_f1"] = edge_f1
                     candidate_item["lingua_metric"] = lingua_metric
                     

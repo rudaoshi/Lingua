@@ -69,7 +69,7 @@ def choose_primary_root(lingua_graph: GPGraph, roots):
         is_punctuation = int(getattr(node, "pos", None) == "PunctuationalConstant")
         root_scores.append(
             (
-                -is_punctuation,
+                is_punctuation,
                 -descendant_count,
                 *_node_sort_key(lingua_graph, node),
                 node,
@@ -205,7 +205,6 @@ symbol_nodelabel2edge = {
     "Discourse":"@discourse_of",
     "Expression":"@expression",
     "List":"@list",
-    "Missing":"@missing",
     "Modification":"@modification_of",
     "Parataxis":"@parataxis",
     "Ref":"@ref_of",
@@ -224,7 +223,6 @@ symbol_nodelabel2pos = {
     "Discourse": "ModificationalFunctor",
     "Expression": "ExpressionFunctor",
     "List": "ListFunctor",
-    "Missing": "FactualPredicator",
     "Modification": "ModificationalFunctor",
     "Parataxis": "ConjunctionalFunctor",
     "Ref": "ReferentialPredicator",
@@ -400,7 +398,7 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
     This function is the *single* inverse step for that forward transform. Internally it
     restores:
       - list-like functors: Expression/List/Parataxis
-      - single-layer functors/predicators: Modification/Apposition/Attribute/Copula/Discourse/Missing/Ref/Vocative
+      - single-layer functors/predicators: Modification/Apposition/Attribute/Copula/Discourse/Ref/Vocative
     """
     
 

@@ -27,7 +27,6 @@ LinguaGraphAuxNodeLabels = {
     "Discourse",
     "Expression",
     "List",
-    "Missing",
     "Modification",
     "Parataxis",
     "Ref",
@@ -56,4 +55,3 @@ LinguaGraphEdges = {
 }
 
 LinguaGraphEdges.update( "as:" + edge for edge in list(LinguaGraphEdges))    
-

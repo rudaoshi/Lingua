@@ -281,7 +281,10 @@ def node_pos_from_node_type_logits(
     node_type_pred = node_type_logits_1.argmax(dim=-1).tolist()
     node_pos: List[str] = []
     for i, t in enumerate(node_type_pred):
-        node_pos.append(id2node_type.get(int(t), "UNK"))
+        type_id = int(t)
+        if type_id not in id2node_type:
+            raise ValueError(f"Predicted node type id is not in model vocabulary: {type_id}")
+        node_pos.append(id2node_type[type_id])
     return node_pos
 
 
@@ -370,6 +373,7 @@ class WordLinguaInference:
         label2id: Dict[str, int],
         config: InferenceConfig,
         statistics: Optional[Any] = None,  # WordLinguaStatistics
+        id2node_type: Optional[Dict[int, str]] = None,
         device: str = "cpu",
     ):
         """
@@ -390,6 +394,10 @@ class WordLinguaInference:
         self.label2id = label2id
         self.config = config
         self.statistics = statistics
+        if id2node_type is None:
+            raise ValueError("id2node_type must be provided by the loaded model vocabulary")
+        self.id2node_type = id2node_type
+        self.node_type2id = {v: k for k, v in id2node_type.items()}
         self.device = device
         
         # Move model to device
@@ -398,9 +406,6 @@ class WordLinguaInference:
         
         # Lazy import to avoid circular dependencies
         from lingua.learn.wordgraph.decoding.graph_decoder import GreedyPatternDecoder
-        from lingua.learn.wordgraph.model.biaffine import ID2NODE_TYPE
-        
-        self._id2node_type = ID2NODE_TYPE
         
         # Initialize decoder
         self.decoder = GreedyPatternDecoder(
@@ -413,11 +418,34 @@ class WordLinguaInference:
             lam_sibling_prob=config.lam_sibling_prob,
             lam_pos_prob=config.lam_pos_prob,
             lam_parent_given_child_prob=config.lam_parent_given_child_prob,
+            id2node_type=self.id2node_type,
             debug=config.debug,
             debug_dir=config.debug_dir,
         )
         
         self._example_counter = 0
+
+    def _result_decoding_info(self, decoding_info: Dict[str, Any]) -> Dict[str, Any]:
+        if self.config.debug:
+            return decoding_info
+
+        keep_keys = {
+            "errors",
+            "warnings",
+            "forced_connections",
+            "disconnected_nodes",
+            "phase3_failures",
+            "phase4_force_connects",
+            "phase4_multihead_fixes",
+            "single_root_repairs",
+            "validation_errors",
+            "has_issues",
+        }
+        return {
+            key: value
+            for key, value in decoding_info.items()
+            if key in keep_keys and value
+        }
     
     @classmethod
     def from_pretrained(
@@ -448,7 +476,10 @@ class WordLinguaInference:
         """
         from transformers import AutoTokenizer
         from lingua.learn.wordgraph.decoding.statistics import WordLinguaStatistics
-        from lingua.learn.wordgraph.model.biaffine import WordLinguaParserV2
+        from lingua.learn.wordgraph.model.biaffine import (
+            WordLinguaParserV2,
+            build_node_type_maps,
+        )
         
         if not os.path.isdir(model_dir):
             raise ValueError(f"model_dir must be a directory: {model_dir}")
@@ -465,14 +496,54 @@ class WordLinguaInference:
         
         logger.info(f"Model config: {model_config}")
         
-        # Load label2id.json
+        edge_types = model_config.get("edge_types")
+        if edge_types is None:
+            edge_types_path = os.path.join(model_dir, "edge_types.json")
+            if os.path.exists(edge_types_path):
+                with open(edge_types_path, "r", encoding="utf-8") as f:
+                    edge_types = json.load(f)
+
+        # Load edge vocabulary
         label2id_path = os.path.join(model_dir, "label2id.json")
-        if not os.path.exists(label2id_path):
-            raise FileNotFoundError(f"label2id.json not found in {model_dir}")
-        
-        with open(label2id_path, "r", encoding="utf-8") as f:
-            label2id = {str(k): int(v) for k, v in json.load(f).items()}
+        if os.path.exists(label2id_path):
+            with open(label2id_path, "r", encoding="utf-8") as f:
+                label2id = {str(k): int(v) for k, v in json.load(f).items()}
+        elif edge_types:
+            label2id = {str(label): idx for idx, label in enumerate(edge_types)}
+        else:
+            raise FileNotFoundError(f"Neither label2id.json nor edge_types was found in {model_dir}")
         id2label = {v: k for k, v in label2id.items()}
+
+        if edge_types is not None:
+            expected_label2id = {str(label): idx for idx, label in enumerate(edge_types)}
+            if expected_label2id != label2id:
+                logger.warning("label2id.json differs from config edge_types; using label2id.json for compatibility")
+
+        # Load weights before constructing the model.
+        weights_path = os.path.join(model_dir, "pytorch_model.bin")
+        if not os.path.exists(weights_path):
+            weights_path = os.path.join(model_dir, "model.safetensors")
+
+        if os.path.exists(weights_path):
+            logger.info(f"Loading weights from: {weights_path}")
+            if weights_path.endswith(".safetensors"):
+                from safetensors.torch import load_file
+
+                state_dict = load_file(weights_path, device="cpu")
+            else:
+                state_dict = torch.load(weights_path, map_location="cpu")
+        else:
+            raise FileNotFoundError(f"No model weights found in {model_dir} (tried pytorch_model.bin and model.safetensors)")
+
+        node_types = model_config.get("node_types")
+        if not node_types:
+            node_types_path = os.path.join(model_dir, "node_types.json")
+            if os.path.exists(node_types_path):
+                with open(node_types_path, "r", encoding="utf-8") as f:
+                    node_types = json.load(f)
+        if not node_types:
+            raise ValueError("Model bundle is missing node_types; retrain/export it with a sample-derived node type vocabulary")
+        node_type2id, id2node_type = build_node_type_maps(node_types)
         
         # Build InferenceConfig - always use hidden sizes from model_config for model architecture
         arc_hidden_size = model_config.get("arc_hidden_size", 500)
@@ -513,8 +584,10 @@ class WordLinguaInference:
         tokenizer = AutoTokenizer.from_pretrained(model_dir)
         
         # Create model (load BERT config from pretrained model directory)
+        model_edge_types = [id2label[i] for i in range(len(id2label))]
         model = WordLinguaParserV2(
-            label_num=len(label2id),
+            edge_types=model_edge_types,
+            node_types=node_types,
             arc_hidden_size=inference_config.arc_hidden_size,
             rel_hidden_size=inference_config.rel_hidden_size,
             node_hidden_size=inference_config.node_hidden_size,
@@ -522,23 +595,7 @@ class WordLinguaInference:
             word_pooling=inference_config.word_pooling,
             pretrained_model_path=model_dir,
         )
-        
-        # Load weights from pytorch_model.bin or model.safetensors
-        weights_path = os.path.join(model_dir, "pytorch_model.bin")
-        if not os.path.exists(weights_path):
-            weights_path = os.path.join(model_dir, "model.safetensors")
-        
-        if os.path.exists(weights_path):
-            logger.info(f"Loading weights from: {weights_path}")
-            if weights_path.endswith(".safetensors"):
-                from safetensors.torch import load_file
-
-                state_dict = load_file(weights_path, device="cpu")
-            else:
-                state_dict = torch.load(weights_path, map_location="cpu")
-            model.load_state_dict(state_dict, strict=False)
-        else:
-            raise FileNotFoundError(f"No model weights found in {model_dir} (tried pytorch_model.bin and model.safetensors)")
+        model.load_state_dict(state_dict, strict=False)
         
         # Load statistics
         statistics = None
@@ -558,6 +615,7 @@ class WordLinguaInference:
             label2id=label2id,
             config=inference_config,
             statistics=statistics,
+            id2node_type=id2node_type,
             device=device,
         )
     
@@ -629,7 +687,7 @@ class WordLinguaInference:
         cow_logits = out["child_of_whether_logits"][0, :num_nodes, :].float().cpu().numpy()
         is_root_logits = out["is_root_logits"][0, :num_nodes, :].float().cpu().numpy()
         
-        # Get predictions - pass integer IDs to decoder (it looks them up in ID2NODE_TYPE)
+        # Get predictions; decoder maps IDs through the model bundle's node type vocab.
         node_type_preds = np.array([int(np.argmax(node_type_logits[i])) for i in range(num_nodes)])
         cow_preds = [bool(np.argmax(cow_logits[i]) == 1) for i in range(num_nodes)]
         
@@ -684,7 +742,7 @@ class WordLinguaInference:
             edges=edges,
             node_types=node_type_preds,
             child_of_whether=cow_preds,
-            decoding_info=decoding_info if self.config.debug else {},
+            decoding_info=self._result_decoding_info(decoding_info),
         )
     
     def parse_batch(
@@ -785,7 +843,7 @@ class WordLinguaInference:
                 cow_logits = out["child_of_whether_logits"][b_idx, :num_nodes, :].float().cpu().numpy()
                 is_root_logits = out["is_root_logits"][b_idx, :num_nodes, :].float().cpu().numpy()
                 
-                # Get predictions - pass integer IDs to decoder (it looks them up in ID2NODE_TYPE)
+                # Get predictions; decoder maps IDs through the model bundle's node type vocab.
                 node_type_preds = np.array([int(np.argmax(node_type_logits[i])) for i in range(num_nodes)])
                 cow_preds = [bool(np.argmax(cow_logits[i]) == 1) for i in range(num_nodes)]
                 
@@ -840,7 +898,7 @@ class WordLinguaInference:
                     edges=edges,
                     node_types=node_type_preds,
                     child_of_whether=cow_preds,
-                    decoding_info=decoding_info if self.config.debug else {},
+                    decoding_info=self._result_decoding_info(decoding_info),
                 ))
                 
             except Exception as e:

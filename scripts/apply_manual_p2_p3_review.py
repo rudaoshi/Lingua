@@ -194,19 +194,16 @@ def fix_train_8996(sample: dict[str, Any]) -> str:
 
 
 def fix_train_10533(sample: dict[str, Any]) -> str:
-    graph(sample)["nodes"].append(node("Missing", "NominalConstant"))
-    missing = len(graph(sample)["nodes"]) - 1
     graph(sample)["edges"] = [
         edge(0, 1, "pred.arg.1"),
         edge(0, 5, "pred.arg.2"),
         edge(3, 2, "pred.arg.1"),
         edge(4, 6, "as:modification"),
         edge(5, 4, "as:modification"),
-        edge(5, missing, "pred.arg.1"),
         edge(6, 2, "variable"),
         edge(6, 3, "body"),
     ]
-    return "make the starting-place phrase the copular complement and mark `to look` subject implicit"
+    return "make the starting-place phrase the copular complement and leave `to look` subject absent"
 
 
 def fix_train_4499(sample: dict[str, Any]) -> str:

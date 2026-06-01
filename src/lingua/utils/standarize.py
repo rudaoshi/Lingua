@@ -3,7 +3,14 @@ convert a token gpgraph to word gpgraph
 """
 
 import re
-from lingua.structure.gpgraph import GPGraph, GPGAuxNode, GPGPhraseNode, GPGTextNode, TextGPGraph
+from lingua.structure.gpgraph import (
+    GPGraph,
+    GPGAuxNode,
+    GPGPhraseNode,
+    GPGTextNode,
+    TextGPGraph,
+    standardize_spans,
+)
 
 from typing import List
 
@@ -221,257 +228,216 @@ def get_word_char_spans(words: List[str], sentence: str):
         cur = end
     return spans
 
+def _indices_to_spans(indices):
+    indices = sorted(set(indices))
+    if not indices:
+        return []
+
+    spans = []
+    start = end = indices[0]
+    for idx in indices[1:]:
+        if idx == end + 1:
+            end = idx
+        else:
+            spans.append((start, end))
+            start = end = idx
+    spans.append((start, end))
+    return spans
+
+
+def _choose_target_owner(candidates, source_indices, source_idx2node, node2source_indices):
+    def score(node):
+        node_source_indices = [
+            idx for idx in source_indices if source_idx2node.get(idx) == node
+        ]
+        return (
+            node.pos != "PunctuationalConstant",
+            max(node_source_indices),
+            len(node_source_indices),
+            len(node2source_indices[node]),
+            node.ID,
+        )
+
+    return max(candidates, key=score)
+
+
+def _mapped_spans_for_source_span(span, source2target_map, target_owner, node):
+    if isinstance(span, str):
+        return [span]
+
+    if isinstance(span, int):
+        source_indices = [span]
+    elif isinstance(span, (tuple, list)) and len(span) == 2:
+        start, end = span
+        source_indices = range(start, end + 1)
+    else:
+        raise ValueError(f"Invalid span: {span}")
+
+    target_indices = []
+    for source_idx in source_indices:
+        for target_idx in source2target_map.get(source_idx, []):
+            if target_owner.get(target_idx) == node:
+                target_indices.append(target_idx)
+
+    return _indices_to_spans(target_indices)
+
+
 def standardize_gpgraph_words(gpgraph: GPGraph, sentence: str):
     """
-    Standardize the words in the gpgraph and update the node spans accordingly.
+    Standardize gpgraph words to exactly match segment(sentence).
+
+    If several old phrase nodes map into one segment token, keep the segment
+    token intact and assign it to a single owner node. Empty loser nodes are
+    removed and their edges are redirected to the owner.
     """
     assert isinstance(gpgraph, GPGraph)
 
     source_words = gpgraph.words
     target_words = segment(sentence)
-    
-    # 1. Compute char spans
+
     source_spans = get_word_char_spans(source_words, sentence)
     target_spans = get_word_char_spans(target_words, sentence)
-    
-    # 2. Align source words to target words
-    # Map source_index -> list of target_indices
+
     source2target_map = {}
-    
-    for s_idx, s_span in enumerate(source_spans):
-        if s_span is None:
+    for source_idx, source_span in enumerate(source_spans):
+        if source_span is None:
             continue
-            
-        s_start, s_end = s_span
-        matched_t_indices = []
-        
-        for t_idx, t_span in enumerate(target_spans):
-            if t_span is None:
+
+        source_start, source_end = source_span
+        target_indices = []
+        for target_idx, target_span in enumerate(target_spans):
+            if target_span is None:
                 continue
-                
-            t_start, t_end = t_span
-            
-            # Check for overlap
-            # Overlap if max(start) < min(end)
-            if max(s_start, t_start) < min(s_end, t_end):
-                # We have an overlap. Check boundary conditions.
-                # Valid if: Source contains Target OR Target contains Source
-                
-                s_contains_t = (s_start <= t_start) and (s_end >= t_end)
-                t_contains_s = (t_start <= s_start) and (t_end >= s_end)
-                
-                if not (s_contains_t or t_contains_s):
-                    raise Exception(f"Word alignment cross boundary: Source '{source_words[s_idx]}' ({s_span}) vs Target '{target_words[t_idx]}' ({t_span})")
-                
-                matched_t_indices.append(t_idx)
-        
-        if matched_t_indices:
-            # If multiple targets, they should be continuous intervals?
-            # It's possible to skip if there are gaps in sentence not covered by targets?
-            # But just store the list.
-            source2target_map[s_idx] = matched_t_indices
 
-    # 3. Conflict Resolution: Check for shared target indices across DIFFERENT nodes
-    # If multiple nodes map to the same target index, we must split that target word.
-    
-    # Build reverse map: target_idx -> list of source_indices
+            target_start, target_end = target_span
+            if max(source_start, target_start) >= min(source_end, target_end):
+                continue
+
+            source_contains_target = (
+                source_start <= target_start and source_end >= target_end
+            )
+            target_contains_source = (
+                target_start <= source_start and target_end >= source_end
+            )
+            if not (source_contains_target or target_contains_source):
+                raise ValueError(
+                    "Word alignment cross boundary: "
+                    f"Source '{source_words[source_idx]}' ({source_span}) vs "
+                    f"Target '{target_words[target_idx]}' ({target_span})"
+                )
+
+            target_indices.append(target_idx)
+
+        if target_indices:
+            source2target_map[source_idx] = target_indices
+
     target2source_map = {}
-    for s_idx, t_indices in source2target_map.items():
-        for t_idx in t_indices:
-            if t_idx not in target2source_map:
-                target2source_map[t_idx] = []
-            target2source_map[t_idx].append(s_idx)
+    for source_idx, target_indices in source2target_map.items():
+        for target_idx in target_indices:
+            target2source_map.setdefault(target_idx, []).append(source_idx)
 
-    # Determine which target words need splitting
-    # A target word needs splitting if it is mapped to by source words that belong to DIFFERENT nodes.
-    # We need to look up which node owns which source word.
-    
+    phrase_nodes = [node for node in gpgraph.nodes() if isinstance(node, GPGPhraseNode)]
+    node2source_indices = {
+        node: list(node.indexes(with_aux=False)) for node in phrase_nodes
+    }
     source_idx2node = {}
-    for node in gpgraph.nodes():
-        if isinstance(node, GPGPhraseNode):
-            for span in node.spans:
-                if isinstance(span, int):
-                    source_idx2node[span] = node
-                elif isinstance(span, (tuple, list)):
-                    for i in range(span[0], span[1] + 1):
-                        source_idx2node[i] = node
-    
-    new_target_words = []
-    # Map old_target_idx -> [new_target_indices]
-    target_split_map = {} 
-    
-    current_new_idx = 0
-    
-    for t_idx, word in enumerate(target_words):
-        if t_idx not in target2source_map:
-            # Not used by any source (or at least no alignment found), keep as is
-            new_target_words.append(word)
-            target_split_map[t_idx] = [current_new_idx]
-            current_new_idx += 1
-            continue
-            
-        associated_source_indices = sorted(target2source_map[t_idx])
-        
-        # Check if these source indices belong to different nodes
-        associated_nodes = set()
-        for s_idx in associated_source_indices:
-            if s_idx in source_idx2node:
-                associated_nodes.add(source_idx2node[s_idx])
-        
-        if len(associated_nodes) > 1:
-            # Conflict! Multiple nodes share this target word.
-            # We must split this target word back into pieces corresponding to the source words.
-            # Since we know the char spans of source words, we can extract them from the target word?
-            # Or from the original sentence? 
-            # Actually, simplify: Just take the corresponding source words as the new words for this segment?
-            # But we want to respect the 'segment' normalization (e.g. spacing).
-            # The issue is 'hello' (target) coming from 'hel', 'lo'.
-            # If we split, we probably want to revert to 'hel', 'lo' OR split 'hello' at the correct boundary.
-            # Since 'segment' did the merge, maybe we should just use the source words for this segment?
-            # BUT source words might be unnormalized.
-            # Ideally, we split 'hello' based on the character lengths of the source words.
-            
-            # Let's try to split 'word' based on the character lengths of aligned source words.
-            # 1. Get char spans of source words
-            s_spans = [source_spans[i] for i in associated_source_indices]
-            
-            # Validate coverage: do source spans cover the target span?
-            # Target span
-            t_span = target_spans[t_idx]
-            
-            # Reconstruct parts
-            parts = []
-            
-            # We assume order is preserved in associated_source_indices
-            
-            # There might be gaps or unmapped chars?
-            # Strategy: Use source words' text as the split parts?
-            # If we trust source words to be the "truth" for splitting.
-            # But we should normalize them if possible (add spaces).
-            
-            # Actually, simpler: If conflict, just use the source words corresponding to each conflicting node group.
-            # Correct. Use source words for these indices.
-            
-            split_indices = []
-            for s_idx in associated_source_indices:
-                # Add source word to new list
-                # Use source text? Or try to extract from sentence?
-                # Extracting from sentence preserves original formatting better?
-                # s_span = source_spans[s_idx]
-                # part = sentence[s_span[0]:s_span[1]]
-                # Actually, simple: use source_words[s_idx] but maybe add space if needed?
-                # The 'segment' function manages spacing.
-                # If we revert to source words, we lose 'segment' benefits for this word.
-                # But it's better than invalid graph.
-                
-                # Let's use source_words[s_idx] and try running add_prefix_space on the chunk later?
-                # Or just append.
-                
-                part = source_words[s_idx]
-                
-                # Heuristic: if original source word didn't have space, but target did...
-                # Current simple fix: use source word.
-                new_target_words.append(part)
-                split_indices.append(current_new_idx)
-                current_new_idx += 1
-                
-            target_split_map[t_idx] = split_indices
-            
+    for node, indices in node2source_indices.items():
+        for source_idx in indices:
+            source_idx2node[source_idx] = node
+
+    target_owner = {}
+    redirect_candidates = {node: [] for node in phrase_nodes}
+    for target_idx in range(len(target_words)):
+        source_indices = sorted(target2source_map.get(target_idx, []))
+        candidates = {
+            source_idx2node[source_idx]
+            for source_idx in source_indices
+            if source_idx in source_idx2node
+        }
+        if not candidates:
+            raise ValueError(
+                f"No phrase node can own target word {target_idx}: "
+                f"{target_words[target_idx]!r}"
+            )
+
+        owner = _choose_target_owner(
+            candidates, source_indices, source_idx2node, node2source_indices
+        )
+        target_owner[target_idx] = owner
+        for node in candidates:
+            if node != owner:
+                redirect_candidates[node].append(owner)
+
+    node2new_spans = {}
+    removed_nodes = []
+    for node in phrase_nodes:
+        new_spans = []
+        for span in node.spans:
+            new_spans.extend(
+                _mapped_spans_for_source_span(
+                    span, source2target_map, target_owner, node
+                )
+            )
+
+        if new_spans:
+            node2new_spans[node] = standardize_spans(new_spans)
         else:
-            # No conflict (only 1 node or no nodes)
-            new_target_words.append(word)
-            target_split_map[t_idx] = [current_new_idx]
-            current_new_idx += 1
-            
-    # Update target_words to the split version
-    target_words = new_target_words
-    
-    # Update gpgraph.words to the new target words
+            removed_nodes.append(node)
+
+    node_redirect = {}
+    for node in removed_nodes:
+        candidates = redirect_candidates[node]
+        if not candidates:
+            continue
+
+        counts = {candidate: candidates.count(candidate) for candidate in candidates}
+        node_redirect[node] = max(
+            counts,
+            key=lambda candidate: (
+                counts[candidate],
+                len(node2source_indices.get(candidate, [])),
+                candidate.ID,
+            ),
+        )
+
+    original_edges = list(gpgraph.relations())
+    gpgraph.g.remove_edges_from(list(gpgraph.g.edges()))
+
+    for node in removed_nodes:
+        if gpgraph.has_node(node):
+            gpgraph.remove_node(node)
+
     gpgraph.words = target_words
-    
-    # Re-map source2target_map using target_split_map
-    # old source2target_map: source_idx -> [old_target_indices]
-    # new source2target_map: source_idx -> [new_target_indices]
-    
-    new_source2target_map = {}
-    for s_idx, t_indices in source2target_map.items():
-        new_t_indices = []
-        
-        # If this source idx was part of a conflict, it should map to ONLY its specific split part.
-        # How do we know which split part?
-        # In the loop above, we iterated associated_source_indices in order.
-        # So split_indices[k] corresponds to associated_source_indices[k].
-        
-        # We need check if t_idx was split.
-        for t_idx in t_indices:
-            if t_idx in target_split_map:
-                mapped_news = target_split_map[t_idx]
-                
-                if len(mapped_news) > 1:
-                    # It was split! Find which one corresponds to s_idx
-                    # Re-derive associated_source_indices for this t_idx
-                    associated = sorted(target2source_map[t_idx])
-                    try:
-                        pos = associated.index(s_idx)
-                        new_t_indices.append(mapped_news[pos])
-                    except ValueError:
-                        # s_idx not in associated? Should not happen if logic is consistent
-                        pass
-                else:
-                    new_t_indices.extend(mapped_news)
-        
-        if new_t_indices:
-            new_source2target_map[s_idx] = sorted(list(set(new_t_indices)))
+    gpgraph.spans2node = {}
+    for node in phrase_nodes:
+        if not gpgraph.has_node(node):
+            continue
 
-    source2target_map = new_source2target_map
+        node._spans = node2new_spans[node]
+        if node.spans in gpgraph.spans2node:
+            raise ValueError(f"Repeated node spans after standardization: {node.spans}")
+        gpgraph.spans2node[node.spans] = node
 
-    for node in gpgraph.nodes():
-        if isinstance(node, GPGPhraseNode):
-            new_spans = []
-            for span in node.spans:
-                if isinstance(span, str):
-                    new_spans.append(span)
-                elif isinstance(span, (tuple, list)) and len(span) == 2:
-                    start, end = span
-                    # Range inclusive [start, end]
-                    # Collect all target indices mapped from source indices in this range
-                    t_indices = []
-                    for s_i in range(start, end + 1):
-                        if s_i in source2target_map:
-                            t_indices.extend(source2target_map[s_i])
-                    
-                    if t_indices:
-                        t_indices = sorted(list(set(t_indices)))
-                        # Convert to spans (start, end)
-                        # We might have gaps if source words mapped to discontinuous targets? 
-                        # Assuming continuous for now or let standardize_spans handle it.
-                        # But modify_node_spans takes list of elements or (start, end).
-                        # Let's group continuous indices.
-                        
-                        rng_start = t_indices[0]
-                        rng_end = t_indices[0]
-                        for idx in t_indices[1:]:
-                            if idx == rng_end + 1:
-                                rng_end = idx
-                            else:
-                                new_spans.append((rng_start, rng_end))
-                                rng_start = idx
-                                rng_end = idx
-                        new_spans.append((rng_start, rng_end))
-                        
-                elif isinstance(span, int):
-                    # Single source index
-                    if span in source2target_map:
-                        t_indices = source2target_map[span]
-                        # Add as spans
-                        # If single target: int ok? standardize_spans handles it.
-                        # But better be explicit tuple if range.
-                        if len(t_indices) == 1:
-                            new_spans.append(t_indices[0])
-                        else:
-                             new_spans.append((min(t_indices), max(t_indices)))
-            
-            if new_spans:
-                gpgraph.modify_node_spans(node, new_spans)
-                
+    def resolve_node(node):
+        seen = set()
+        while node in node_redirect and node not in seen:
+            seen.add(node)
+            node = node_redirect[node]
+        return node
+
+    for start_node, edge, end_node in original_edges:
+        start_node = resolve_node(start_node)
+        end_node = resolve_node(end_node)
+
+        if start_node == end_node:
+            continue
+        if not gpgraph.has_node(start_node) or not gpgraph.has_node(end_node):
+            continue
+        if gpgraph.get_edge(start_node, end_node) is not None:
+            continue
+
+        gpgraph.add_relation(start_node, end_node, edge.label, edge.confidence)
+
+    gpgraph.root_ = None
+
     return gpgraph

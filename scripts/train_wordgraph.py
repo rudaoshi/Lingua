@@ -44,9 +44,7 @@ from lingua.structure.gpgraph import GPGraph, GPGPhraseNode, GPGAuxNode
 from lingua.learn.wordgraph.modeler.gp2word import lingua2wordlingua
 from lingua.learn.wordgraph.model.biaffine import (
     WordLinguaParserV2,
-    NODE_TYPES,
-    NODE_TYPE2ID,
-    ID2NODE_TYPE,
+    build_node_type_maps,
 )
 
 logging.basicConfig(
@@ -82,9 +80,10 @@ class WordLinguaDatasetV2(Dataset):
     """Dataset for word-lingua-graph parsing (v2) - reads lingua data directly."""
     
     def __init__(self, data_path: str, tokenizer, label2id: Dict[str, int],
-                 max_length: int = 512):
+                 node_type2id: Dict[str, int], max_length: int = 512):
         self.tokenizer = tokenizer
         self.label2id = label2id
+        self.node_type2id = node_type2id
         self.max_length = max_length
         self.examples: List[WordLinguaExampleV2] = []
         
@@ -133,7 +132,7 @@ class WordLinguaDatasetV2(Dataset):
         
         # Track child_of_whether attribute and node type
         child_of_whether = [False] * num_nodes
-        node_type = [NODE_TYPE2ID.get("UNK", len(NODE_TYPES))] * num_nodes  # Default to UNK
+        node_type = [-1] * num_nodes
         
         def _phrase_word_idx_to_node_idx(word_idx: int) -> int:
             return word_idx
@@ -150,11 +149,13 @@ class WordLinguaDatasetV2(Dataset):
                         if hasattr(node, 'child_of_whether') and node.child_of_whether:
                             child_of_whether[node_idx] = True
                         # Get node type (pos)
-                        if node.pos in NODE_TYPE2ID:
-                            node_type[node_idx] = NODE_TYPE2ID[node.pos]
-                        else:
-                            logger.debug(f"Unknown node type: {node.pos}")
-                            node_type[node_idx] = NODE_TYPE2ID.get("UNK", len(NODE_TYPES))
+                        if node.pos not in self.node_type2id:
+                            raise ValueError(f"Unknown node type in sample: {node.pos}")
+                        node_type[node_idx] = self.node_type2id[node.pos]
+
+        missing_node_type = [idx for idx, type_id in enumerate(node_type) if type_id < 0]
+        if missing_node_type:
+            raise ValueError(f"Missing node type labels for word indices: {missing_node_type}")
         
         # Process edges (root node is now part of graph structure, learned through arc/relation prediction)
         for parent, edge, child in word_lingua_graph.edges():
@@ -176,11 +177,9 @@ class WordLinguaDatasetV2(Dataset):
             
             # Get edge label
             edge_label = edge.label
-            if edge_label in self.label2id:
-                label_id = self.label2id[edge_label]
-            else:
-                label_id = self.label2id.get("UNK", 0)
-                logger.debug(f"Unknown edge label: {edge_label}")
+            if edge_label not in self.label2id:
+                raise ValueError(f"Unknown edge label in sample: {edge_label}")
+            label_id = self.label2id[edge_label]
             
             arc_labels[parent_idx][child_idx] = label_id
 
@@ -604,9 +603,17 @@ def train_epoch_v2(model: nn.Module, dataloader: DataLoader,
 # Main Training Function
 # ============================================================================
 
-def build_label_vocab_v2(data_paths: List[str]) -> Tuple[Dict[str, int], Dict[int, str]]:
-    """Build label vocabulary from lingua data files."""
-    label_counter = Counter()
+def _ordered_vocab(counter: Counter) -> List[str]:
+    """Return labels in first-seen order from a Counter."""
+    return list(counter.keys())
+
+
+def build_vocab_v2(
+    data_paths: List[str],
+) -> Tuple[List[str], Dict[str, int], Dict[int, str], List[str], Dict[str, int], Dict[int, str]]:
+    """Build edge and node type vocabularies from word-lingua samples."""
+    edge_counter = Counter()
+    node_type_counter = Counter()
     
     for data_path in data_paths:
         with jsonlines.open(data_path, "r") as reader:
@@ -614,27 +621,38 @@ def build_label_vocab_v2(data_paths: List[str]) -> Tuple[Dict[str, int], Dict[in
                 try:
                     lingua_graph = GPGraph.parse(item["lingua"])
                     word_lingua_graph, _, _ = lingua2wordlingua(lingua_graph)
+
+                    for node in word_lingua_graph.nodes():
+                        if isinstance(node, GPGPhraseNode):
+                            word_indices = list(node.words(with_aux=False))
+                            if len(word_indices) == 1:
+                                node_type_counter[node.pos] += 1
                     
                     for _, edge, _ in word_lingua_graph.edges():
-                        label_counter[edge.label] += 1
+                        edge_counter[edge.label] += 1
                 except Exception:
                     raise 
-    
-    # Start with base labels
-    label2id = {"UNK": 0}
-    
-    # Add observed labels not in base
-    for label in label_counter:
-        if label not in label2id:
-            label2id[label] = len(label2id)
+
+    node_types = _ordered_vocab(node_type_counter)
+    edge_types = _ordered_vocab(edge_counter)
+    if not node_types:
+        raise ValueError("No node types found in training data")
+    if not edge_types:
+        raise ValueError("No edge types found in training data")
+
+    node_type2id, id2node_type = build_node_type_maps(node_types)
+    label2id = {label: idx for idx, label in enumerate(edge_types)}
     
     id2label = {v: k for k, v in label2id.items()}
     
-    logger.info(f"Built label vocabulary with {len(label2id)} labels")
-    for label, count in label_counter.most_common(20):
+    logger.info(f"Built edge vocabulary with {len(edge_types)} labels")
+    for label, count in edge_counter.most_common(20):
         logger.info(f"  {label}: {count}")
+    logger.info(f"Built node type vocabulary with {len(node_types)} types")
+    for node_type, count in node_type_counter.most_common():
+        logger.info(f"  {node_type}: {count}")
     
-    return label2id, id2label
+    return edge_types, label2id, id2label, node_types, node_type2id, id2node_type
 
 
 def export_pretrained_bundle(
@@ -643,6 +661,8 @@ def export_pretrained_bundle(
     model: nn.Module,
     tokenizer,
     label2id: Dict[str, int],
+    edge_types: List[str],
+    node_types: List[str],
     bert_model_name: str,
     arc_hidden_size: int,
     rel_hidden_size: int,
@@ -658,6 +678,12 @@ def export_pretrained_bundle(
     with open(os.path.join(output_dir, "label2id.json"), "w", encoding="utf-8") as f:
         json.dump(label2id, f, indent=2, ensure_ascii=False)
 
+    with open(os.path.join(output_dir, "edge_types.json"), "w", encoding="utf-8") as f:
+        json.dump(edge_types, f, indent=2, ensure_ascii=False)
+
+    with open(os.path.join(output_dir, "node_types.json"), "w", encoding="utf-8") as f:
+        json.dump(node_types, f, indent=2, ensure_ascii=False)
+
     with open(os.path.join(output_dir, "config.json"), "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -667,6 +693,8 @@ def export_pretrained_bundle(
                 "node_hidden_size": node_hidden_size,
                 "dropout": dropout,
                 "word_pooling": word_pooling,
+                "edge_types": edge_types,
+                "node_types": node_types,
             },
             f,
             indent=2,
@@ -674,6 +702,81 @@ def export_pretrained_bundle(
         )
 
     torch.save(model.state_dict(), os.path.join(output_dir, "pytorch_model.bin"))
+
+
+def save_model_variant(
+    *,
+    output_dir: str,
+    checkpoint_name: str,
+    bundle_name: str,
+    model: nn.Module,
+    tokenizer,
+    optimizer,
+    epoch: int,
+    train_metrics: Dict[str, float],
+    dev_metrics: Dict[str, float],
+    label2id: Dict[str, int],
+    edge_types: List[str],
+    node_types: List[str],
+    bert_model_name: str,
+    arc_hidden_size: int,
+    rel_hidden_size: int,
+    node_hidden_size: int,
+    dropout: float,
+    word_pooling: str,
+    selection_metric: str,
+    selection_score: float,
+    export_legacy_root_bundle: bool = False,
+    legacy_checkpoint_name: Optional[str] = None,
+) -> None:
+    """Save a reloadable checkpoint and an inference-ready pretrained bundle."""
+    os.makedirs(output_dir, exist_ok=True)
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "train_metrics": train_metrics,
+        "dev_metrics": dev_metrics,
+        "selection_metric": selection_metric,
+        "selection_score": selection_score,
+        "label2id": label2id,
+        "edge_types": edge_types,
+        "node_types": node_types,
+    }
+    torch.save(checkpoint, os.path.join(output_dir, checkpoint_name))
+    if legacy_checkpoint_name:
+        torch.save(checkpoint, os.path.join(output_dir, legacy_checkpoint_name))
+
+    export_pretrained_bundle(
+        output_dir=os.path.join(output_dir, bundle_name),
+        model=model,
+        tokenizer=tokenizer,
+        label2id=label2id,
+        edge_types=edge_types,
+        node_types=node_types,
+        bert_model_name=bert_model_name,
+        arc_hidden_size=arc_hidden_size,
+        rel_hidden_size=rel_hidden_size,
+        node_hidden_size=node_hidden_size,
+        dropout=dropout,
+        word_pooling=word_pooling,
+    )
+
+    if export_legacy_root_bundle:
+        export_pretrained_bundle(
+            output_dir=output_dir,
+            model=model,
+            tokenizer=tokenizer,
+            label2id=label2id,
+            edge_types=edge_types,
+            node_types=node_types,
+            bert_model_name=bert_model_name,
+            arc_hidden_size=arc_hidden_size,
+            rel_hidden_size=rel_hidden_size,
+            node_hidden_size=node_hidden_size,
+            dropout=dropout,
+            word_pooling=word_pooling,
+        )
 
 
 def main(args):
@@ -688,18 +791,22 @@ def main(args):
         device = "cpu"
     logger.info(f"Using device: {device}")
     
-    # Build label vocabulary
-    logger.info("Building label vocabulary...")
+    # Build vocabularies from the training samples.
+    logger.info("Building edge and node type vocabularies...")
     train_path = os.path.join(args.data_dir, "train.jsonl")
     dev_path = os.path.join(args.data_dir, "dev.jsonl")
     test_path = os.path.join(args.data_dir, "test.jsonl")
     
-    label2id, id2label = build_label_vocab_v2([train_path])
+    edge_types, label2id, id2label, node_types, node_type2id, _ = build_vocab_v2([train_path])
     
-    # Save label vocabulary
+    # Save vocabularies at the run root as well as inside exported bundles.
     os.makedirs(args.output_dir, exist_ok=True)
     with open(os.path.join(args.output_dir, "label2id.json"), "w", encoding="utf-8") as f:
-        json.dump(label2id, f, indent=2)
+        json.dump(label2id, f, indent=2, ensure_ascii=False)
+    with open(os.path.join(args.output_dir, "edge_types.json"), "w", encoding="utf-8") as f:
+        json.dump(edge_types, f, indent=2, ensure_ascii=False)
+    with open(os.path.join(args.output_dir, "node_types.json"), "w", encoding="utf-8") as f:
+        json.dump(node_types, f, indent=2, ensure_ascii=False)
     
     # Load tokenizer
     logger.info(f"Loading tokenizer from {args.bert_model}...")
@@ -709,9 +816,9 @@ def main(args):
     
     # Create datasets
     logger.info("Loading datasets...")
-    train_dataset = WordLinguaDatasetV2(train_path, tokenizer, label2id, args.max_length)
-    dev_dataset = WordLinguaDatasetV2(dev_path, tokenizer, label2id, args.max_length)
-    test_dataset = WordLinguaDatasetV2(test_path, tokenizer, label2id, args.max_length)
+    train_dataset = WordLinguaDatasetV2(train_path, tokenizer, label2id, node_type2id, args.max_length)
+    dev_dataset = WordLinguaDatasetV2(dev_path, tokenizer, label2id, node_type2id, args.max_length)
+    test_dataset = WordLinguaDatasetV2(test_path, tokenizer, label2id, node_type2id, args.max_length)
     
     # Log statistics
     train_cow_count = sum(sum(ex.child_of_whether) for ex in train_dataset.examples)
@@ -736,7 +843,8 @@ def main(args):
     logger.info("Creating model...")
     model = WordLinguaParserV2(
         init_bert_model_name=args.bert_model,
-        label_num=len(label2id),
+        edge_types=edge_types,
+        node_types=node_types,
         arc_hidden_size=args.arc_hidden_size,
         rel_hidden_size=args.rel_hidden_size,
         node_hidden_size=args.node_hidden_size,
@@ -749,7 +857,8 @@ def main(args):
     optimizer = AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     
     # Training loop
-    best_dev_f1 = 0.0
+    best_combined_f1 = 0.0
+    best_labeled_f1 = 0.0
     
     for epoch in range(args.num_epochs):
         logger.info(f"\n{'='*50}")
@@ -786,42 +895,100 @@ def main(args):
                    f"NodeType Acc: {dev_metrics['node_type_accuracy']:.4f}, "
                    f"IsRoot F1: {dev_metrics['is_root_f1']:.4f}")
         
-        # Save best model (based on combined metric)
+        # Save best model variants.
         combined_f1 = (dev_metrics['labeled_f1'] + 
                        dev_metrics['child_of_whether_f1'] + 
                        dev_metrics['node_type_accuracy'] +
                        dev_metrics['is_root_f1']) / 4
         
-        if combined_f1 > best_dev_f1:
-            best_dev_f1 = combined_f1
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'dev_metrics': dev_metrics,
-                'label2id': label2id,
-            }, os.path.join(args.output_dir, "best_model.pt"))
-            export_pretrained_bundle(
+        if combined_f1 > best_combined_f1:
+            best_combined_f1 = combined_f1
+            save_model_variant(
                 output_dir=args.output_dir,
+                checkpoint_name="best_combined.pt",
+                bundle_name="best_combined",
                 model=model,
                 tokenizer=tokenizer,
+                optimizer=optimizer,
+                epoch=epoch,
+                train_metrics=train_eval_metrics,
+                dev_metrics=dev_metrics,
                 label2id=label2id,
+                edge_types=edge_types,
+                node_types=node_types,
                 bert_model_name=args.bert_model,
                 arc_hidden_size=args.arc_hidden_size,
                 rel_hidden_size=args.rel_hidden_size,
                 node_hidden_size=args.node_hidden_size,
                 dropout=args.dropout,
                 word_pooling=args.word_pooling,
+                selection_metric="combined_f1",
+                selection_score=best_combined_f1,
+                export_legacy_root_bundle=True,
+                legacy_checkpoint_name="best_model.pt",
             )
-            logger.info(f"Saved best model with Combined F1: {best_dev_f1:.4f}")
+            logger.info(f"Saved best-combined model with Combined F1: {best_combined_f1:.4f}")
+
+        if dev_metrics["labeled_f1"] > best_labeled_f1:
+            best_labeled_f1 = dev_metrics["labeled_f1"]
+            save_model_variant(
+                output_dir=args.output_dir,
+                checkpoint_name="best_labeled_f1.pt",
+                bundle_name="best_labeled_f1",
+                model=model,
+                tokenizer=tokenizer,
+                optimizer=optimizer,
+                epoch=epoch,
+                train_metrics=train_eval_metrics,
+                dev_metrics=dev_metrics,
+                label2id=label2id,
+                edge_types=edge_types,
+                node_types=node_types,
+                bert_model_name=args.bert_model,
+                arc_hidden_size=args.arc_hidden_size,
+                rel_hidden_size=args.rel_hidden_size,
+                node_hidden_size=args.node_hidden_size,
+                dropout=args.dropout,
+                word_pooling=args.word_pooling,
+                selection_metric="dev_labeled_f1",
+                selection_score=best_labeled_f1,
+            )
+            logger.info(f"Saved best-labeled-F1 model with Dev Labeled F1: {best_labeled_f1:.4f}")
+
+    save_model_variant(
+        output_dir=args.output_dir,
+        checkpoint_name="last_epoch.pt",
+        bundle_name="last_epoch",
+        model=model,
+        tokenizer=tokenizer,
+        optimizer=optimizer,
+        epoch=args.num_epochs - 1,
+        train_metrics=train_eval_metrics,
+        dev_metrics=dev_metrics,
+        label2id=label2id,
+        edge_types=edge_types,
+        node_types=node_types,
+        bert_model_name=args.bert_model,
+        arc_hidden_size=args.arc_hidden_size,
+        rel_hidden_size=args.rel_hidden_size,
+        node_hidden_size=args.node_hidden_size,
+        dropout=args.dropout,
+        word_pooling=args.word_pooling,
+        selection_metric="last_epoch",
+        selection_score=dev_metrics["labeled_f1"],
+    )
+    logger.info(
+        f"Saved last-epoch model from epoch {args.num_epochs} "
+        f"with Dev Labeled F1: {dev_metrics['labeled_f1']:.4f}"
+    )
     
     # Final evaluation on test
     logger.info("\n" + "="*50)
     logger.info("Final Evaluation on Test Set")
     logger.info("="*50)
     
-    # Load best model
-    checkpoint = torch.load(os.path.join(args.output_dir, "best_model.pt"), map_location=device)
+    # Load best-combined model for backward-compatible final test reporting.
+    checkpoint = torch.load(os.path.join(args.output_dir, "best_combined.pt"), map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     
     test_metrics = evaluate_v2(model, test_loader, device, id2label)
@@ -847,6 +1014,8 @@ def main(args):
         model=model,
         tokenizer=tokenizer,
         label2id=label2id,
+        edge_types=edge_types,
+        node_types=node_types,
         bert_model_name=args.bert_model,
         arc_hidden_size=args.arc_hidden_size,
         rel_hidden_size=args.rel_hidden_size,

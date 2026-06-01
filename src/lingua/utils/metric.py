@@ -14,7 +14,7 @@ from lingua.structure.gpgraph import get_word_positions
 #         w_list = [x for x in w_list if not re.match('\{\d+\}', x)]
 #     return " ".join(w_list)
 
-def get_node_info(node, graph: GPGraph):
+def get_node_info(node, graph: GPGraph, *, with_type: bool = True):
     if isinstance(node, GPGAuxNode):
         node_text = node.label
     elif isinstance(node, GPGTextNode):
@@ -23,7 +23,9 @@ def get_node_info(node, graph: GPGraph):
         assert isinstance(node, GPGPhraseNode)
         node_text = graph.node_text(node)
 
-    node_info = {"text": node_text}#, "type": node.pos}
+    node_info = {"text": node_text}
+    if with_type:
+        node_info["type"] = getattr(node, "pos", None)
 
     return node_info
 
@@ -155,6 +157,10 @@ def node_exact_match_func(node1_info, node2_info):
     return all(node1_info[key] == node2_info[key] for key in node1_info.keys())
 
 def node_loose_match_func(node1_info, node2_info):
+    if "type" in node1_info or "type" in node2_info:
+        if node1_info.get("type") != node2_info.get("type"):
+            return False
+
     node1_words = [x.strip() for x in node1_info["text"].split() if x.strip()]
     node2_words = [x.strip() for x in node2_info["text"].split() if x.strip()]
     return freq_similarity(node1_words, node2_words) > 0 
@@ -188,9 +194,9 @@ def graph_match_metric(pred_graph: Union[GPGraph, TextGPGraph],
     assert edge_match in ["exact", "loose"]
 
 
-    pred_node2info = {n: get_node_info(n, pred_graph) for n in pred_graph.nodes()}
+    pred_node2info = {n: get_node_info(n, pred_graph, with_type=with_type) for n in pred_graph.nodes()}
             
-    truth_node2info = {n: get_node_info(n, truth_graph) for n in truth_graph.nodes()}
+    truth_node2info = {n: get_node_info(n, truth_graph, with_type=with_type) for n in truth_graph.nodes()}
 
     pred_nodes = list(pred_node2info.values())
     true_nodes = list(truth_node2info.values())
