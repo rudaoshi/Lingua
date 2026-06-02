@@ -37,3 +37,25 @@ def test_graph_match_metric_can_ignore_type_for_legacy_text_matching():
     assert metric["matched_node_num"] == 2
     assert metric["matched_edge_num"] == 1
     assert metric["exact_same"]
+
+
+def test_graph_match_metric_can_distinguish_repeated_text_by_span():
+    pred = GPGraph()
+    pred.words = ["*", "*"]
+    pred.add_node(GPGPhraseNode(spans=[(0, 0)], pos="PunctuationalConstant"))
+
+    truth = GPGraph()
+    truth.words = ["*", "*"]
+    truth.add_node(GPGPhraseNode(spans=[(1, 1)], pos="PunctuationalConstant"))
+
+    legacy_metric = graph_match_metric(pred, truth)
+    span_metric = graph_match_metric(pred, truth, with_spans=True)
+
+    assert legacy_metric["exact_same"]
+    assert not span_metric["exact_same"]
+    assert span_metric["unmatched_pred_nodes"] == [
+        {"text": "*", "type": "PunctuationalConstant", "spans": ((0, 0),)}
+    ]
+    assert span_metric["unmatched_true_nodes"] == [
+        {"text": "*", "type": "PunctuationalConstant", "spans": ((1, 1),)}
+    ]

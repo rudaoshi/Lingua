@@ -14,7 +14,17 @@ from lingua.structure.gpgraph import get_word_positions
 #         w_list = [x for x in w_list if not re.match('\{\d+\}', x)]
 #     return " ".join(w_list)
 
-def get_node_info(node, graph: GPGraph, *, with_type: bool = True):
+def _canonical_spans(spans):
+    canonical = []
+    for span in spans:
+        if isinstance(span, tuple):
+            canonical.append(span)
+        else:
+            canonical.append(tuple(span))
+    return tuple(canonical)
+
+
+def get_node_info(node, graph: GPGraph, *, with_type: bool = True, with_spans: bool = False):
     if isinstance(node, GPGAuxNode):
         node_text = node.label
     elif isinstance(node, GPGTextNode):
@@ -26,6 +36,8 @@ def get_node_info(node, graph: GPGraph, *, with_type: bool = True):
     node_info = {"text": node_text}
     if with_type:
         node_info["type"] = getattr(node, "pos", None)
+    if with_spans:
+        node_info["spans"] = _canonical_spans(node.spans) if isinstance(node, GPGPhraseNode) else None
 
     return node_info
 
@@ -183,7 +195,8 @@ def edge_loose_match_func(edge1_info, edge2_info):
 def graph_match_metric(pred_graph: Union[GPGraph, TextGPGraph], 
                        truth_graph: Union[GPGraph, TextGPGraph],
                        edge_match: str = "exact",
-                       with_type=True):
+                       with_type=True,
+                       with_spans: bool = False):
     """
 
     :param predict:
@@ -194,9 +207,15 @@ def graph_match_metric(pred_graph: Union[GPGraph, TextGPGraph],
     assert edge_match in ["exact", "loose"]
 
 
-    pred_node2info = {n: get_node_info(n, pred_graph, with_type=with_type) for n in pred_graph.nodes()}
+    pred_node2info = {
+        n: get_node_info(n, pred_graph, with_type=with_type, with_spans=with_spans)
+        for n in pred_graph.nodes()
+    }
             
-    truth_node2info = {n: get_node_info(n, truth_graph, with_type=with_type) for n in truth_graph.nodes()}
+    truth_node2info = {
+        n: get_node_info(n, truth_graph, with_type=with_type, with_spans=with_spans)
+        for n in truth_graph.nodes()
+    }
 
     pred_nodes = list(pred_node2info.values())
     true_nodes = list(truth_node2info.values())

@@ -309,7 +309,12 @@ def main():
             # Primary evaluation: Lingua graph comparison
             try:
                 if pred_lingua_graph is not None:
-                    lingua_metric = graph_match_metric(pred_lingua_graph, gold_lingua_graph, edge_match=args.edge_match)
+                    lingua_metric = graph_match_metric(
+                        pred_lingua_graph,
+                        gold_lingua_graph,
+                        edge_match=args.edge_match,
+                        with_spans=True,
+                    )
                     
                     lingua_total_pred_nodes += lingua_metric["pred_node_num"]
                     lingua_total_true_nodes += lingua_metric["true_node_num"]
@@ -343,7 +348,12 @@ def main():
             # Secondary evaluation: Word-lingua graph comparison (only if ground truth conversion succeeded)
             if gold_word_lingua_graph is not None:
                 try:
-                    metric = graph_match_metric(pred_word_lingua_graph, gold_word_lingua_graph, edge_match=args.edge_match)
+                    metric = graph_match_metric(
+                        pred_word_lingua_graph,
+                        gold_word_lingua_graph,
+                        edge_match=args.edge_match,
+                        with_spans=True,
+                    )
                     
                     total_pred_nodes += metric["pred_node_num"]
                     total_true_nodes += metric["true_node_num"]

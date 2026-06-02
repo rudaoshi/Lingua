@@ -137,6 +137,12 @@ R-MOD-04: Fronted modifiers are high-risk but not special by themselves; check a
 
 R-MOD-05: Remove redundant `Modification` wrappers when no recoverability or scope information is lost.
 
+R-MOD-05a: A `Modification` whose `variable` and `body` recover the same descendant token set is a redundant empty wrapper; retarget incoming edges to the shared child and remove the aux node.
+
+R-MOD-05b: If `Modification.body` is already a `ModificationalFunctor` or inner `Modification` whose own `variable` recovers the same semantic unit as the outer `Modification.variable`, the outer `Modification` is redundant. Retarget the outer incoming edge to the body root unless the outer node adds an independently recoverable scope boundary.
+
+R-MOD-05c: If `Modification.body` is already reachable from `Modification.variable` through internal graph edges, the body is already part of the variable's recoverable unit. Retarget incoming edges to the variable root and remove the redundant aux node.
+
 R-MOD-06: Purpose clauses headed by infinitives such as `to push through...` usually modify the complete event they explain; do not attach them as the main predicate's object or `pred.arg.4` unless the predicate selects that complement.
 
 R-MOD-07: When an ordinary purpose, time, manner, or similar adjunct is introduced by overt `to` or a preposition, prefer that token as the anchored `ModificationalFunctor`: `variable` points to the core event or wrapped core event, and `body` points to the adjunct content.
@@ -173,9 +179,13 @@ R-PUNCT-03: Delimiters such as `:`, `-`, `--`, `...`, parentheses, brackets, quo
 
 R-PUNCT-04: `&` meaning "and" is `ConjunctionalFunctor`; `&` inside names, titles, codes, or symbol strings is an expression/symbol part. It should not be `LogicalPredicator`.
 
-R-PUNCT-05: Before attaching a punctuation or symbol node to an outer relation with `punctuation`, check whether it closes a local component. In `A: B`, `A - B`, `A -- B`, or `A ... B`, the delimiter usually closes `A`, so the outer relation should point to the punctuation wrapper and the punctuation should have `as:punctuation -> A`. For paired parentheses/brackets/quotes around `B`, the wrapper closes `B`. Use outer `punctuation` only when the mark belongs to the whole relation or cannot be localized.
+R-PUNCT-05: Before attaching a punctuation or symbol node to an outer relation with `punctuation`, check whether it closes a local component. In `A: B`, `A - B`, `A -- B`, or `A ... B`, the delimiter usually closes `A`, so the outer relation should point to the punctuation wrapper and the punctuation should have `as:punctuation -> A`. For parentheses, brackets, quotes, or other punctuation wrappers, use the actual `as:punctuation` target as the closed component; do not infer a special scope merely from surface punctuation count. Use outer `punctuation` only when the mark belongs to the whole relation or cannot be localized.
 
 R-PUNCT-06: If `p/PunctuationalConstant --as:punctuation--> child` exists, `p` is the close wrapper and `DESC(p)` is the closed component. An outer predicate, functor, or aux relation that needs the closed component should point its semantic edge to `p`, not merely attach `p` as `punctuation`. The mixed pattern `parent --punctuation--> p` plus `p --as:punctuation--> child` is usually an error; retarget the outer semantic edge to `p`, or remove the redundant plain punctuation edge if `p` already has the correct semantic parent.
+
+R-APPOS-01: `Apposition.pred.arg.1` is the host/base expression and should be judged by `DESC(arg1)`. In `Lopez, the secretary`, if the comma only closes `Lopez`, use `Apposition.pred.arg.1 -> comma` plus `comma --as:punctuation--> Lopez`. If a punctuation wrapper has `as:punctuation -> Apposition`, that wrapper is outside the `Apposition` and is not an alternate internal `pred.arg.1` form. Do not use the same punctuation wrapper both as an outer apposition close wrapper and as internal `pred.arg.1`.
+
+R-APPOS-02: Numeric value-label statistic fragments such as `42 - Number of nationalities...`, `49 - Percentage of Americans...`, and `63 - Percentage of oil...` are not appositions: the number and the `Number/Percentage/...` label phrase are not the same referent. Use the dash as an `ExpressionFunctor` with `func.arg` edges to the numeric value and to the label phrase.
 
 R-AS-01: A compact shorthand edge `A --as:*--> B` is allowed only when `A` has exactly one outgoing edge, namely that `as:*` edge. If `A` also has `func.arg`, `pred.arg.*`, `variable`, `body`, `repeat`, `punctuation`, or another `as:*` child, expand the relation into the corresponding auxiliary node (`Modification`, `Discourse`, `Vocative`, `Ref`, etc.) and put `A`'s full internal structure in the appropriate argument/body position.
 
@@ -183,7 +193,15 @@ R-EXPR-01: Format is a functor. In dates, times, durations, scores, addresses, p
 
 R-EXPR-02: Common format functors include numeric time/duration/score colons (`08:23`, `08:36:00`, `1:18.52`), date slashes or dashes (`06/04/01`, `1996-12-06`), decimal/version dots (`0.25`, `2.3`), numeric thousands/date/address commas (`35,000`, `March 28, 2003`, `Houston, Texas`), hyphenated proper-name/code separators (`Epstein-Barr`, `ATF-1`), URL/email/path/query separators (`/`, `.`, `@`, `?`, `=`, `&`, `#`), calculation operators, compact formula parentheses (`25(OH)D3`), currency/percent/rank symbols when they form a numeric expression, and compact biomedical suffixes such as `CD4+`. Field/header colons, discourse dashes, ordinary parentheticals, and punctuation that closes a local syntactic component remain punctuation close markers rather than expression functors.
 
+R-EXPR-03: Hyphenated compounds, proper names, codes, and measure modifiers such as `paddle-steamer`, `Al-Anbar`, `99-tonne`, `one-week`, and `NF-kappa` should use the visible hyphen as an `ExpressionFunctor` with `func.arg` edges to the left and right parts. Do not encode this as `Modification(variable=right_part, body=hyphen/PunctuationalConstant)` plus `hyphen --as:punctuation--> left_part`. Dashes that are field, headline, topic, or discourse delimiters are not compound operators; analyze them with punctuation close scope, `Discourse`, `Parataxis`, `Attribute`, or `List` as appropriate.
+
+R-EXPR-04: In numeric statistic fragments of the form `value - Number/Percentage/... label`, the dash is an `ExpressionFunctor` combining the numeric value and the statistical label phrase. This is a value-label expression, not a compound hyphen, not a punctuation-close apposition, and not an `Attribute` with a fabricated host.
+
 R-LIST-01: An explicit list separator can be the list functor. If `,`, `;`, `/`, `...`, or a list-separating dash connects list items, the separator node itself should be the `ListFunctor` root with `func.arg` edges to the items. A single `ListFunctor` may cover multiple separator tokens in one n-ary list. Do not add an extra `spans: "List"` aux merely to wrap that explicit operator; use a `List` aux only when there is no single visible list operator or when a higher-level grouping must combine already formed sublists or heterogeneous fields.
+
+R-LIST-02: A `List.func.arg` item is a logical field, not an arbitrary surface token. In table, ranking, score, roster, and result rows, keep flat numeric/stat columns as sibling items, but first group field-internal structures such as `name (country/team/role)`, dates, scores, ranges, `player vs. player`, and cricket `b bowler` notation as `Attribute`, `Expression`, `ConjunctionalFunctor`/`ListFunctor`, or a punctuation close wrapper.
+
+R-LIST-03: `OtherConstant` must not be used as a sibling list item. If the token is a recoverable field label, give it a concrete constant type; if it is a delimiter or notation marker, make it a list/expression/operator or local close wrapper inside the field.
 
 R-DESC-01: Judge wrapper arguments by descendant subgraph recoverability, not by the wrapper node alone.
 
@@ -202,6 +220,8 @@ R-FRAG-01: Before requiring a main factual predicate, decide whether the whole s
 R-FRAG-02: Pure structured fragments still need token coverage, legal labels, one recoverable root, and a DAG, but they do not need an invented `FactualPredicator`, subject, object, or ordinary proposition.
 
 R-FRAG-03: Parallel headers, table columns, menu items, and list-like labels should use `ListFunctor`/`List` or equivalent list structure; do not invent predicate-argument relations between parallel fields.
+
+R-FRAG-03b: For structured rows, the outer `List` contains fields, while field-internal qualifiers or notations are analyzed before entering the list. Examples: `rank. name (country) result` is `List(rank, Attribute(name,country), result)`, `player vs. player` uses `vs` as the inner operator, and `b Harris` in a cricket scorecard is one notation field rather than separate `b` and `Harris` list items.
 
 R-FRAG-03A: Topic/header/source/speaker metadata that provides utterance context but does not enter the core predicate-argument structure should use compact `as:discourse`: `context --as:discourse--> core`. The `context` node may be a punctuation close wrapper such as `BASEBALL -` or `DPA:`. Retarget outer edges that need the full contextualized unit to the context wrapper so `DESC(context)` recovers the complete utterance. Do not add new `core --discourse--> context` edges.
 

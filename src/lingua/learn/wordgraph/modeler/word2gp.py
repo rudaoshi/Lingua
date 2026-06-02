@@ -227,7 +227,7 @@ symbol_nodelabel2pos = {
     "Parataxis": "ConjunctionalFunctor",
     "Ref": "ReferentialPredicator",
     "Vocative": "ModificationalFunctor",
-    "Whether": "LogicalPredicator",
+    "Whether": "GeneralFunctor",
 }
 
 
@@ -533,9 +533,6 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
             # visualizer.visualize(lingua_graph, file_name=f"{visiting_node.ID}.{idx}.png", format="png")
 
         
-        if hasattr(visiting_node, "child_of_whether") and visiting_node.child_of_whether:
-            current_root.child_of_whether = True
-            delattr(visiting_node, "child_of_whether")
         updated = True 
 
 

@@ -54,10 +54,12 @@ Procedure:
    - ordinary adjuncts introduced by `to` or a preposition should use that overt token as the anchored `ModificationalFunctor`; fixed complex prepositions such as `in order to`, `so as to`, `because of`, `due to`, `according to`, `in front of`, `by means of`, and `in addition to` are kept as one functor, with `variable` pointing to the core unit and `body` pointing to the introduced content;
    - modifiers attach to the smallest complete semantic unit they modify;
    - multi-layer modifiers follow semantic proximity and scope;
+   - remove redundant empty `Modification` wrappers when `variable` and `body` recover the same token set, when `body` already anchors the same `variable` as an overt `ModificationalFunctor` / inner `Modification`, or when `body` is already reachable from `variable`;
    - explicit wh-words, relative `that`, or referring expressions use `ref/as:ref` or `Ref`;
    - zero relative clauses do not invent `Ref`;
    - punctuation roots close the correct local structure;
    - expression-internal format separators split into recoverable parts and use the separator/operator as `ExpressionFunctor`; field/header/discourse/syntactic close punctuation remains punctuation.
+   - list items are logical fields: keep flat table/stat columns as siblings, but group field-internal qualifiers, scores, dates, `vs.` matches, and domain notation such as cricket `b Harris` before inserting them into the outer `List`; never leave an `OtherConstant` as a sibling list item.
 5. Produce a JSON report. Do not silently repair; report original errors and include a minimal corrected annotation in `corrected_annotation` whenever the verdict is `minor_error`, `major_error`, or `invalid` and a repair is possible.
 6. If the user requests changes, edit the data and provide before/after diffs or diagrams.
 
@@ -162,6 +164,9 @@ Principle: programmatic checks catch form errors; the model still performs lingu
 - Pure punctuation or symbol tokens must not be any `*Predicator`; use punctuation/symbol/expression structure, or lexical/auxiliary relation nodes for the relation they delimit.
 - If punctuation closes a local component, make it the wrapper of that component with `as:punctuation`; the outer relation should point to that wrapper, not merely attach the punctuation as an outer `punctuation` child.
 - If `p/PunctuationalConstant --as:punctuation--> child` exists, then `p` is the close wrapper and `DESC(p)` is the closed component. Do not also treat the same `p` as an ordinary outer `punctuation` child; retarget the outer semantic edge to `p`, or delete the redundant plain punctuation edge when `p` already has the correct semantic parent.
+- In `Apposition`, judge `pred.arg.1` by `DESC(arg1)`: a host-only close punctuation may be `arg1`, but punctuation whose `as:punctuation` target is the whole apposition stays outside the `Apposition` node and is not an alternate internal `arg1` form.
+- Do not keep a tokenless outer `Modification` if its `body` already represents the full anchored modifier with the same `variable`; retarget incoming edges to that body root unless the outer wrapper adds a real wider scope. If the `body` is already reachable from `variable`, retarget incoming edges to `variable` instead.
+- Numeric value-label statistics such as `42 - Number of ...` and `49 - Percentage of ...` are `ExpressionFunctor` dash structures with `func.arg` value and label; they are not `Apposition`.
 - Format is a functor: in dates, times, addresses, person/proper-name abbreviations, URL/email/file paths, codes, formulas, calculations, currency/percent expressions, and similar expressions, split recoverable parts and make the internal separator/operator an `ExpressionFunctor`. Keep field/header/discourse delimiters and ordinary syntactic close punctuation as punctuation close markers.
 - Treat punctuation-root warnings as low-value by default in this dataset; inspect punctuation only for local close-scope errors.
 - When uncertain, report competing analyses and confidence.

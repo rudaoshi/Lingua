@@ -40,7 +40,7 @@ symbol_nodelabel2pos = {
     "Parataxis": "ConjunctionalFunctor",
     "Ref": "ReferentialPredicator",
     "Vocative": "ModificationalFunctor",
-    "Whether": "LogicalPredicator",
+    "Whether": "GeneralFunctor",
 }
 
 
@@ -67,6 +67,12 @@ def add_relation(parent, child, edge_label, lingua_graph: GPGraph):
         new_edge_label = edge_label
     lingua_graph.add_relation(parent, child, new_edge_label)
     return new_edge_label
+
+
+def add_hierarchy_relation(parent, child, edge_label, lingua_graph: GPGraph):
+    if parent == child:
+        return None
+    return add_relation(parent, child, edge_label, lingua_graph)
 
 def symbolic_level_prefix(lingua_graph: GPGraph, node: GPGNode):
 
@@ -420,9 +426,9 @@ def remove_aux_nodes(lingua_graph: GPGraph, ordered_nodes: list, debug=False):
                 resolve_cycle_before_add_edge(lingua_graph, body, variable)
                 for child, edge in find_ambiguous_hierarchy(lingua_graph, this_tail_node[0]):
                     if variable in lingua_graph.offsprings(child):
-                        add_relation(child, variable, "@upper", lingua_graph)
+                        add_hierarchy_relation(child, variable, "@upper", lingua_graph)
                     else:
-                        add_relation(variable, child, "@lower", lingua_graph)
+                        add_hierarchy_relation(variable, child, "@lower", lingua_graph)
                 new_edge_label = add_relation(body, current_head_node,  symbol_nodelabel2edge[this_aux_node.label], lingua_graph)
                     
                 if debug:
@@ -442,9 +448,9 @@ def remove_aux_nodes(lingua_graph: GPGraph, ordered_nodes: list, debug=False):
                 resolve_cycle_before_add_edge(lingua_graph, arg2, arg1)
                 for child, edge in find_ambiguous_hierarchy(lingua_graph, arg2):
                     if arg1 in lingua_graph.offsprings(child):
-                        add_relation(child, arg1, "@upper", lingua_graph)
+                        add_hierarchy_relation(child, arg1, "@upper", lingua_graph)
                     else:
-                        add_relation(arg1, child, "@lower", lingua_graph)
+                        add_hierarchy_relation(arg1, child, "@lower", lingua_graph)
                 new_edge_label = add_relation(arg2, arg1, symbol_nodelabel2edge[this_aux_node.label], lingua_graph)
                 
                 if debug:
@@ -468,13 +474,13 @@ def remove_aux_nodes(lingua_graph: GPGraph, ordered_nodes: list, debug=False):
                     resolve_cycle_before_add_edge(lingua_graph, p, n)
                     for child, edge in find_ambiguous_hierarchy(lingua_graph, p):
                         if n in lingua_graph.offsprings(child):
-                            add_relation(child, n, "@upper", lingua_graph)
+                            add_hierarchy_relation(child, n, "@upper", lingua_graph)
                         else:
-                            add_relation(n, child, "@lower", lingua_graph)
+                            add_hierarchy_relation(n, child, "@lower", lingua_graph)
 
                     for child, edge in find_ambiguous_hierarchy(lingua_graph, n):
                         if aux_edge_label in edge.label.split("+"):
-                            add_relation(p, child, "@lower", lingua_graph)
+                            add_hierarchy_relation(p, child, "@lower", lingua_graph)
                         
                     new_edge_label = add_relation(p, n, aux_edge_label, lingua_graph)
                         

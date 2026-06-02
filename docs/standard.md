@@ -137,6 +137,24 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | `Vocative` | 呼语。 |
 | `Whether` | 极性疑问或 whether-clause 的结构节点。 |
 
+辅助 symbol node 的 label 与 node type 必须保持一致：
+
+| Symbol label | Required node type |
+|---|---|
+| `Apposition` | `AppositionalPredicator` |
+| `Attribute` | `AttributePredicator` |
+| `Copula` | `FactualPredicator` |
+| `Discourse` | `ModificationalFunctor` |
+| `Expression` | `ExpressionFunctor` |
+| `List` | `ListFunctor` |
+| `Modification` | `ModificationalFunctor` |
+| `Parataxis` | `ConjunctionalFunctor` |
+| `Ref` | `ReferentialPredicator` |
+| `Vocative` | `ModificationalFunctor` |
+| `Whether` | `GeneralFunctor` |
+
+`Expression`、`List`、`Parataxis` 等 `func.arg` 型 symbol node 必须至少有两个有效 `func.arg` 子项。若只有一个子项，该 wrapper 不提供可恢复结构信息，应删除 wrapper，并让外层关系直接指向唯一子项或能 close 该子项的 wrapper。显式 operator token 可直接作为 `ExpressionFunctor` / `ListFunctor` root，不需要再额外创建同名 symbol node 包住 operator。
+
 当前标准不允许 `Missing` node。任何 `spans: "Missing"`、symbol label `Missing`，或用 `Missing` 作为隐式实体 / 省略论元占位的节点，都应视为非法标注。若论元无法由句内 token、控制关系、并列共享、被动/提升关系或 `DESC(v)` 负责任恢复，应让该论元缺省；不得为了补齐 schema 创建 `Missing`。
 
 ### 3.2 Node types
@@ -599,7 +617,7 @@ from
 
 ### 6.5 相对从句
 
-相对从句修饰实体时，应先建模相对从句内部事实，再通过 `Modification` 包装。若句中存在显式 wh-word、`that` 或其他指代性关系标记，应使用 `ref` / `as:ref` 或等价 `Ref` 节点连接该显式指代成分与被修饰实体。
+相对从句修饰实体时，应先建模相对从句内部事实，再通过 `Modification` 包装。若句中存在显式 wh-word、`that` 或其他指代性关系标记，应使用 `Ref` 节点表达“head entity 被该定语从句限定后形成的整体 referent”。
 
 示例：
 
@@ -616,25 +634,51 @@ Modification
     pred.arg.1 -> who
     pred.arg.2 -> the new element
 
-scientist
-  as:ref -> who
+Ref/ReferentialPredicator
+  pred.arg.1 -> scientist
+  pred.arg.2 -> Modification
+    variable -> who
+    body -> discovered/FactualPredicator
 ```
 
-现有 JSONL 数据也接受如下等价结构：
+在 compact JSONL 中，显式关系词如果在从句内部充当 subject、object、oblique 等论元成分，relative-clause `Ref` 的标准结构是：
 
 ```text
 Ref/ReferentialPredicator
   pred.arg.1 -> head entity / antecedent
-  pred.arg.2 -> wh-word / referring expression / relative-clause Modification
+  pred.arg.2 -> relative-clause Modification
+
+Modification
+  variable -> explicit wh-word / that / referring expression
+  body -> relative-clause predicate / functor / clause root
 ```
+
+`who`、`which`、`whom`、`whose`、以及在从句中充当 subject/object 等论元的 relative `that` 不应直接作为 `Ref.pred.arg.2`；它们应作为 relative-clause `Modification.variable`，从句谓词或 clause root 作为 `Modification.body`。这些显式关系词如果是从句内部论元，仍必须在从句谓词中占据对应 `pred.arg.*`；不得用 `Ref` 节点替代从句内部的 wh/that 论元。
+
+`when`、`where` 等 relative adverb 如果在从句中充当时间、地点、方式等状语成分，不应再额外创建 `Modification(variable=when/where, body=...)`。此时 `Ref.pred.arg.2` 直接指向该 relative adverb；relative adverb 必须是 `GeneralFunctor`，并用 `func.arg` 指向其引导的从句 root。这个 `func.arg` 结构已经表达了 relative adverb 与从句 root 的关系，从句 root 不应再以 `pred.arg.*`、`func.arg` 或其他子边反向指回该 relative adverb，否则会形成循环或重复角色。例如：
+
+```text
+Ref/ReferentialPredicator
+  pred.arg.1 -> the place
+  pred.arg.2 -> where/GeneralFunctor
+
+where/GeneralFunctor
+  func.arg -> sells/FactualPredicator
+```
+
+进入 `Ref` 相对从句结构的 wh-word / relative adverb 本身不应同时标为 `LogicalPredicator`；例如时间相对从句中的 `when` 应作为关系词 / relative adverb，而不是再用 `when.pred.arg.1/2` 承载主从句逻辑关系。
+
+若 `that` 表达同位语从句，本身不在其引导的从句中充当 subject、object、oblique、location、time 等任何成分，则 `that` 节点本身应标为 `AppositionalPredicator`，直接表达 head noun 与该从句内容之间的同位关系，而不是创建 `Ref` aux node 或 lexical `Ref`。例如 `the fact that Tusmore was not required...`、`a statement that he had been diagnosed...` 中，`that` 本身是 lexical `Apposition`：`that.pred.arg.1 -> fact/statement`，`that.pred.arg.2 -> content clause root`。相反，`terrain that the line traverses` 中 `that` 是 `traverses` 的宾语，仍应作为从句内部论元出现。
 
 要求：
 
 1. 相对从句内部谓词必须正常建模。
 2. wh-word、关系从句 `that` 或其他显式指代成分如果是论元，应参与谓词论元结构。
-3. 显式 wh-word、关系从句 `that` 或其他指代成分与 head entity 之间必须有 `ref`、`as:ref` 或等价 `Ref(pred.arg.1, pred.arg.2)` 结构。
-4. 整个相对从句作为修饰体修饰 head entity。
-5. 零关系从句没有显式 wh-word / `that` / 指代词时，不应凭空添加 `Ref` 节点。此时应让 head entity 直接填补从句内部的隐含 gap；若 gap 无法由显式 head 或结构关系恢复，则保持缺省，不得添加 `Missing` node。
+3. `who/which/whom/whose/that` 等显式关系词若在从句内部充当论元成分，必须进入 `Ref.pred.arg.2` 所指向的 `Modification.variable`，不能直接作为 `Ref.pred.arg.2`。
+4. 对论元型关系词，整个相对从句作为 `Ref.pred.arg.2` 的 `Modification`，该 `Ref` 作为被定语从句限定后的整体实体参与外层谓词或修饰结构。
+5. `when/where` 等 relative adverb 在从句中充当状语成分时，直接作为 `Ref.pred.arg.2`，并以 `func.arg` 指向从句 root；从句内部不得再用子边指回该 relative adverb。
+6. `that` 表达同位语从句且不在从句中充当成分时，不走 `Modification.variable=that`；该 `that` 本身是 lexical `AppositionalPredicator`。
+7. 零关系从句没有显式 wh-word / `that` / 指代词时，不应凭空添加 `Ref` 节点。此时应让 head entity 直接填补从句内部的隐含 gap；若 gap 无法由显式 head 或结构关系恢复，则保持缺省，不得添加 `Missing` node。
 
 零关系从句示例：
 
@@ -706,6 +750,9 @@ Expression
 4. 独立出现的日期、时间、日期时间、编号、比分、版本号等符号串，若内部只是格式组合而不是语义修饰，应优先作为一个 `Expression`；不得把日期修饰时间、AM/PM 修饰日期时间等格式部件误标为 `Modification` 或 `as:modification` 链。
 5. 当句面存在显式 expression operator 时，该 operator 节点本身就是这个 expression 的 root / functor。`,`、`:`、`-`、`/`、`.`、`@`、`?`、`=`、`&`、括号等若负责组合表达式部件，应标为 `ExpressionFunctor` 并直接以 `func.arg` 指向 operands；不要再额外创建 `spans: "Expression"` aux 只为了包住这个 operator。
 6. 一个 `ExpressionFunctor` 节点可以覆盖多个分隔符 token，共同表示一个 n-ary expression；`spans: "Expression"` aux 只在没有单一显式 operator，或需要组合多个已成形子表达式且句面没有可复用 functor 时使用。
+7. `spans: "Expression"` symbol node 不得只有一个 `func.arg`。只有一个成分时，外层关系应直接指向该成分或其 punctuation close wrapper。
+8. hyphenated compound / proper name / code / measure modifier，如 `paddle-steamer`、`Al-Anbar`、`99-tonne`、`one-week`、`NF-kappa`，其中 `-` 负责组合左右两项，应将 `-` 标为 `ExpressionFunctor`，以 `func.arg` 指向左右项，表达式整体再作为外层修饰体或实体部分参与结构。不得标成 `Modification(variable=右项, body=-/PunctuationalConstant)`，再用 `-.as:punctuation -> 左项` 来表示 compound。相反，标题、字段、话题或 discourse delimiter 中的 dash（如 `SOCCER - ...`、`P.S. - ...`）不是 compound operator，应按 punctuation close、`Discourse`、`Parataxis`、`Attribute` 或 `List` 等结构另行分析。
+9. 统计项 / value-label fragment，如 `42 - Number of nationalities...`、`49 - Percentage of Americans...`、`63 - Percentage of oil...`，前面的数字是 value，后面的 `Number/Percentage/...` 短语解释该数字的统计口径。这里的 dash 是格式分隔 operator，应标为 `ExpressionFunctor`：`dash.func.arg -> 数字`、`dash.func.arg -> 统计口径短语`。不得标为 `Apposition(pred.arg.1=数字-, pred.arg.2=统计口径)`，因为数字和统计口径短语并非同一 referent。除非句内另有明确 host / field 属性结构，否则也不要为了这类 fragment 添加 `Missing` host。
 
 ---
 
@@ -800,8 +847,11 @@ John Miller, the coach
 
 ```text
 Apposition
-  pred.arg.1 -> John Miller
+  pred.arg.1 -> comma
   pred.arg.2 -> the coach
+
+comma/PunctuationalConstant
+  as:punctuation -> John Miller
 ```
 
 或：
@@ -811,11 +861,31 @@ John Miller
   appositive -> the coach
 ```
 
+同位语从句中的 `that` 本身应作为 lexical `AppositionalPredicator`。例如：
+
+```text
+the fact that Tusmore was not required
+```
+
+推荐：
+
+```text
+that/AppositionalPredicator
+  pred.arg.1 -> fact
+  pred.arg.2 -> was not required/FactualPredicator
+```
+
+这里的 `that` 不在从句中充当 subject/object/oblique/time/location 等成分，而是连接 head noun 与其内容从句；不得标为 `Ref/ReferentialPredicator`，也不得把它放入 `Ref.pred.arg.2 -> Modification.variable`。
+
+`Apposition.pred.arg.1` 表示同位结构的 host / base expression，判定时应按 `DESC(arg1)` 恢复 host，而不是只看 `SELF(arg1)`。若 host 后面的逗号、冒号、破折号等局部标点只 close 这个 host，例如 `Lopez, the secretary`，则 `pred.arg.1` 应指向该 close wrapper：`comma --as:punctuation--> Lopez`，`DESC(comma)` 才是带边界的 host。若某个 punctuation wrapper 的 `as:punctuation` 目标是整个 `Apposition`，该 wrapper 位于 `Apposition` 外层，只表示外层 close scope；它不是 `Apposition.pred.arg.1` 的另一种标法，也不应被塞回内部 `pred.arg.1`。节点覆盖多个标点 token 本身不产生特殊规则，必须只按实际 `as:punctuation` close target 判断 scope。
+
 评估原则：
 
 1. 两个成分应指向同一实体或同一 referent。
-2. 同位不是普通修饰；不能简单标为 adjective-like modifier。
-3. 若括号内容是类型、职业，也可能使用 `Attribute`，评估时应允许语义等价变体。
+2. `pred.arg.1` 可以是实体节点、表达式节点、修饰 wrapper、或只 close host 的 punctuation wrapper；只要 `DESC(arg1)` 能恢复 host 即可。
+3. 同位不是普通修饰；不能简单标为 adjective-like modifier。
+4. 若括号内容是类型、职业，也可能使用 `Attribute`，评估时应允许语义等价变体。
+5. `value - label` 统计项不是同位；数字和 `Number/Percentage/...` 统计口径短语不是同一 referent，应按 `Expression` 处理。
 
 ---
 
@@ -845,7 +915,8 @@ because/LogicalPredicator
 4. `LogicalPredicator` 的 `pred.arg.1` / `pred.arg.2` 是句法关系标签，不是原因、结果、条件、结论等语义角色标签。统一原则是：主句、矩阵句、宿主命题或未被该逻辑连接词标记的一侧作 `pred.arg.1`；由该逻辑连接词直接标记、引导或依存的一侧作 `pred.arg.2`。
 5. 句首位置本身不改变连接词的语义功能。`And`、`But`、`So`、`Or`、`However` 等若仍承担并列、转折、因果、结论或选择关系，应尽量按其本意标为 `ConjunctionalFunctor` 或 `LogicalPredicator`，不得仅因位于句首、左侧论元在样本外或只显式出现一侧内容而改标为普通 `ModificationalConstant` / `as:modification`。
 6. 外部或隐含论元不应为了凑二元结构而臆造；但显式可见的论元方向必须按句法功能放对。`because/if/although/though/when/while/unless/until/before/after/since/as soon as/so that` 等引导的从句作 `pred.arg.2`，主句作 `pred.arg.1`，不随语序变化。`so as to` 属于目的复合修饰引导词，按 `in order to` 一类 `ModificationalFunctor` 处理，不进入本条 `LogicalPredicator` 规则。`A so/therefore/thus B`、`A but/however B` 这类非从属连接不应分析为 “B 是主句、A 是从句”；通常以前文或左侧未标记命题 `A` 为 `pred.arg.1`，以连接词标记的后项 / 当前命题 `B` 为 `pred.arg.2`。若句首 `So/Therefore/Thus/But/However` 只有当前命题显式出现，不臆造外部前项，当前命题仍按连接词标记的一侧保留为 `pred.arg.2`。
-7. 只有当该词确实只是话语填充、语气组织、格式标记，且不表达并列、选择、转折、因果、条件、结论等事实关系时，才应标为 discourse / modification 类节点。
+7. `Whether` symbol node 只用于极性疑问、whether-clause 或“是否”类内容从句，类型必须是 `GeneralFunctor`，其子边为 `func.arg`。条件、因果、让步、时间等命题关系不得用 `Whether<LogicalPredicator>` 表示；应使用句面存在的 `if`、`because`、`should` 条件倒装 marker 等 lexical `LogicalPredicator`，按第 4-6 条确定 `pred.arg.1` / `pred.arg.2`。
+8. 只有当该词确实只是话语填充、语气组织、格式标记，且不表达并列、选择、转折、因果、条件、结论等事实关系时，才应标为 discourse / modification 类节点。
 
 错误：
 
@@ -923,6 +994,7 @@ and/ConjunctionalFunctor
 3. 不能只保留第一个并列项。
 4. 共享谓词或共享修饰应作用于整个并列结构。
 5. 对异质枚举，不强调共享结构时可用 `List`。
+6. `spans: "Parataxis"` symbol node 不得只有一个 `func.arg`。若只有一个并置项，应删除该 wrapper，或用实际 close punctuation / discourse / list / expression 结构表示可恢复范围。
 
 ---
 
@@ -955,6 +1027,9 @@ include/FactualPredicator
 4. 列表整体应能作为一个论元被主谓词引用。
 5. 当枚举中有显式 list operator（`,`、`;`、`/`、`...`、可作列表分隔的 `-` 等）时，该 operator 节点本身就是 `ListFunctor` root，直接以 `func.arg` 指向各 list items；不要再额外创建 `spans: "List"` aux 只为了包住这个 operator。
 6. 一个 `ListFunctor` 可以覆盖多个分隔符 token，表示同一个 n-ary list；`spans: "List"` aux 只用于没有显式 operator 的并列/表格字段，或需要组合多个子列表/异质字段且无单一 operator token 承载时。
+7. `spans: "List"` symbol node 不得只有一个 `func.arg`。只有一个 item 时，不构成 list；外层关系应直接指向该 item 或其 punctuation close wrapper。
+8. `List.func.arg` 的 item 粒度是逻辑字段，不是每个表面 token。表格行、排名行、赛果行中，队名/姓名、排名、成绩、比分、日期、年龄、角色、注释等可以作为 sibling fields；但字段内部若有可恢复结构，应先建成一个字段再进入外层 `List`：`name (country/team/role)` 先做 `Attribute`，比分/日期/范围/货币先做 `ExpressionFunctor` / `Expression`，`vs.`、cricket scorecard 的 `b Harris` 等领域记号应作为字段内部 functor / expression，而不是把 `vs.`、`b`、逗号等 marker 当成普通 sibling item。
+9. `OtherConstant` 是低信息 fallback，不应作为 `List.func.arg` 的 sibling item。若该 token 是可恢复字段标签，如 `See also` 或脚注字母，应给出具体常量类型；若是 delimiter，应作为 `ListFunctor`、`PunctuationalConstant` close wrapper，或进入字段内部结构。
 
 ---
 
@@ -989,6 +1064,10 @@ Ref/ReferentialPredicator
   pred.arg.1 -> antecedent / head entity
   pred.arg.2 -> referring expression / referential structure
 ```
+
+若 `Ref` 用于显式相对从句 / 定语从句，argument 型关系词（如 `who/which/that` 在从句中充当 subject/object）应通过 `Ref.pred.arg.2 -> Modification` 表示，关系词进入 `Modification.variable`，从句谓词或从句 root 进入 `Modification.body`。`when/where` 等 relative adverb 在从句中充当状语成分时，`Ref.pred.arg.2` 直接指向该 relative adverb，且该 relative adverb 以 `func.arg` 指向从句 root。
+
+若 `that` 表达同位语从句，且本身不在其引导从句中承担任何论元或修饰成分，则 `that` 节点本身应为 lexical `AppositionalPredicator`，用 `pred.arg.1` 指向 head / host，用 `pred.arg.2` 指向从句内容；不要标为 `ReferentialPredicator`，也不要另造 `Ref` aux node 再把 `that` 当作 `Modification.variable`。
 
 评估原则：
 
@@ -1116,15 +1195,16 @@ Chicago, IL 60622
 1. 平行字段、列名、菜单项、标题列表可用 `ListFunctor` / `List` 挂接每个项目；项目之间没有事实性 predicate-argument 关系时，不得强行建立谓词。
 2. 页码、编号、比分、战绩、日期时间、时间范围、地址、电话号码、email、URL、文件名、百分比、货币数值、模型号、化学式、公式、专名缩写等常规符号串可用 `ExpressionFunctor` / `Expression` 打包为一个可恢复 expression unit。format 本身也是一种 functor：`HH:MM`、`HH:MM:SS`、`M:SS.xx`、日期、地址、姓名 / 专名、代码、计算式等表达式内部的分隔符或操作符，若负责把两侧部件组合成一个格式表达，应作为独立 `ExpressionFunctor` 连接两侧部件；这个 operator 节点本身就是该 expression 的 root，不得把整个格式串无结构地合并为一个 `NominalConstant`，也不要再额外创建 `Expression` aux 只为了包住它。
 3. 列表中的显式分隔符同理：若 `,`、`;`、`/`、`...`、可作列表分隔的 `-` 等负责连接 list items，该分隔符节点应作为 `ListFunctor` root 并直接以 `func.arg` 指向各项。一个 `ListFunctor` 可以覆盖多个分隔符 token；不要把分隔符作为 `List` aux 的普通子项，也不要误当成 close punctuation。
-4. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录应以字段名 token 本身作为 lexical `AttributePredicator`；字段值为 `pred.arg.2`；若外部 host entity 缺失，`pred.arg.1` 保持缺省，不添加 `Missing` node。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`，也不得用 `Attribute` symbol node 加 `attribute -> field label` 重复表示字段名。
-5. 冒号、破折号、逗号、斜杠、括号、句点若只是 fragment 内部 boundary 或 close marker，应作为局部 punctuation / expression boundary，不得成为事实谓词、逻辑谓词、同位谓词、属性谓词或其他 `*Predicator`。
-6. 纯装饰符号、乱码、截断严重、问候/签名、媒体边界、版权声明等低信息片段仍有片段语义，应优先保留为低语义信息 fragment；除非上游数据集有明确的非语义清洗策略，不应仅因信息量低而过滤。
-7. 对问候、签名、感谢、残句等仍能看出普通语法或省略句结构的片段，应先按省略结构解析；若省略论元无法由句内结构恢复，则保持缺省，不添加 `Missing` node。不得因为它是邮件结束语、寒暄语或低信息文本就直接平铺为 `Expression`。
-8. `Expression`、`List`、`Attribute`、局部 punctuation root 或 `nonsense` 只应作为 fallback：当片段内部没有可负责任恢复的谓词、修饰、呼语、介词短语、字段、并列或省略关系时，才把它作为低语义信息 fragment 打包。不得把 `nonsense` 用于可按上述规则解释的正常字段或表达式。
-9. 纯 fragment 的 root 可以是普通语法结构、省略结构、`ListFunctor`、`ExpressionFunctor`、`AttributePredicator`、对应 aux node，或能关闭该 fragment 的 `PunctuationalConstant`；只要 `DESC(root)` 恢复完整 fragment 即可。
-10. 纯日期、时间、日期时间和时间范围片段，如 `02/27/2001 08:23 AM`、`Feb 2005`、`September 21, 2004`、`Tuesday, March 20th.`、`September 20, 1888?`、`4:00 pm - 6:00 pm`，应表示为一个 `Expression`，其子项可按 date / time / meridiem / range boundary 或更细粒度符号部件恢复；其中 `HH:MM` / `HH:MM:SS` 的 `:`、日期中的 `/` / `-`、小数或时长中的 `.`, 数字范围中的 `-` / `to` 等都是格式 `ExpressionFunctor`，两侧部件是其 `func.arg`。不要把 date-time 内部格式关系标成普通修饰，也不要把时间范围分隔符误标为事实谓词。
-11. 新闻 dateline 或来源行，如 `DUBLIN 1996-08-27`、`LOS ANGELES 1996-12-05`，应表示为 `List(location-expression, date-expression)` 或等价可恢复结构：location 和 date 是同一元数据行的两个字段，不是彼此的修饰体，也不是正文事实谓词的论元；若中间有显式字段分隔符，优先用该分隔符作为 `ListFunctor` root。
-12. 纯页码/页引用片段，如 `p. 36`、`pp. 12-15`，应作为 page-reference `Expression` 或等价可恢复表达式；不要把 `p.` 和页码误当成并列 `List` 项。
+4. 表格/赛果/排名行的外层 `List` item 应按 field 粒度切分：纯数字列可保持 flat list；`name (country/team/role)`、`artist (note)`、`name, role, age`、`player vs. player`、`b bowler runs` 等复合字段应先做 `Attribute`、`Expression`、`ConjunctionalFunctor` / `ListFunctor` 或 close wrapper，再作为一个 item。不要把 marker token 本身作为孤立 item。
+5. `key: value`、`field - value`、`Game 11: Tuesday...`、`Preseason Game B: Thursday...`、`Coach: Doug Sewell`、`Email: ...`、`Location: ...`、`Attendance : 15,150`、`Pin #: ...` 等字段记录应以字段名 token 本身作为 lexical `AttributePredicator`；字段值为 `pred.arg.2`；若外部 host entity 缺失，`pred.arg.1` 保持缺省，不添加 `Missing` node。字段名不是普通事实谓词时，不应为了连接 key/value 而把它标成 `FactualPredicator`，也不得用 `Attribute` symbol node 加 `attribute -> field label` 重复表示字段名。
+6. 冒号、破折号、逗号、斜杠、括号、句点若只是 fragment 内部 boundary 或 close marker，应作为局部 punctuation / expression boundary，不得成为事实谓词、逻辑谓词、同位谓词、属性谓词或其他 `*Predicator`。
+7. 纯装饰符号、乱码、截断严重、问候/签名、媒体边界、版权声明等低信息片段仍有片段语义，应优先保留为低语义信息 fragment；除非上游数据集有明确的非语义清洗策略，不应仅因信息量低而过滤。
+8. 对问候、签名、感谢、残句等仍能看出普通语法或省略句结构的片段，应先按省略结构解析；若省略论元无法由句内结构恢复，则保持缺省，不添加 `Missing` node。不得因为它是邮件结束语、寒暄语或低信息文本就直接平铺为 `Expression`。
+9. `Expression`、`List`、`Attribute`、局部 punctuation root 或 `nonsense` 只应作为 fallback：当片段内部没有可负责任恢复的谓词、修饰、呼语、介词短语、字段、并列或省略关系时，才把它作为低语义信息 fragment 打包。不得把 `nonsense` 用于可按上述规则解释的正常字段或表达式。
+10. 纯 fragment 的 root 可以是普通语法结构、省略结构、`ListFunctor`、`ExpressionFunctor`、`AttributePredicator`、对应 aux node，或能关闭该 fragment 的 `PunctuationalConstant`；只要 `DESC(root)` 恢复完整 fragment 即可。
+11. 纯日期、时间、日期时间和时间范围片段，如 `02/27/2001 08:23 AM`、`Feb 2005`、`September 21, 2004`、`Tuesday, March 20th.`、`September 20, 1888?`、`4:00 pm - 6:00 pm`，应表示为一个 `Expression`，其子项可按 date / time / meridiem / range boundary 或更细粒度符号部件恢复；其中 `HH:MM` / `HH:MM:SS` 的 `:`、日期中的 `/` / `-`、小数或时长中的 `.`, 数字范围中的 `-` / `to` 等都是格式 `ExpressionFunctor`，两侧部件是其 `func.arg`。不要把 date-time 内部格式关系标成普通修饰，也不要把时间范围分隔符误标为事实谓词。
+12. 新闻 dateline 或来源行，如 `DUBLIN 1996-08-27`、`LOS ANGELES 1996-12-05`，应表示为 `List(location-expression, date-expression)` 或等价可恢复结构：location 和 date 是同一元数据行的两个字段，不是彼此的修饰体，也不是正文事实谓词的论元；若中间有显式字段分隔符，优先用该分隔符作为 `ListFunctor` root。
+13. 纯页码/页引用片段，如 `p. 36`、`pp. 12-15`，应作为 page-reference `Expression` 或等价可恢复表达式；不要把 `p.` 和页码误当成并列 `List` 项。
 
 判错：
 
@@ -1201,7 +1281,7 @@ Koichi Morita (army officer)
 标点 / 符号不是一律作为外层关系的 `punctuation` child。必须先判断它是否 close 某个局部成分：
 
 1. 若 `A: B`、`A - B`、`A -- B`、`A ... B` 中的标点能自然视为 `A` 的 close marker，则该标点应作为 `A` 的局部 wrapper：`p/PunctuationalConstant --as:punctuation--> A`，外层 `Parataxis` / `Apposition` / `Attribute` / `Discourse` 等关系再把 `p` 作为前项或对应论元。不得写成外层关系 `--punctuation--> p`，否则 `DESC(p)` 不能恢复被 close 的前项。
-2. 若括号、方括号、引号成对包住 `B`，则该标点 wrapper close 的是括号 / 引号内部内容：`p --as:punctuation--> B`，外层同位、属性、并置或修饰关系以 `p` 作为括号项。
+2. 若括号、方括号、引号等 punctuation wrapper 的实际 close target 是 `B`，则 `p --as:punctuation--> B`，外层同位、属性、并置或修饰关系以 `p` 作为被 close 的括号项 / 引号项。不要仅凭表面标点数量臆造 scope；以实际 wrapper 节点和 `as:punctuation` 目标为准。
 3. 只有当标点确实属于整个外层关系、无法可靠归入某个局部成分，或只是非结构性装饰时，才可作为外层关系的普通 `punctuation` child。
 
 核心判定：一旦存在 `p/PunctuationalConstant --as:punctuation--> child`，就表示 `p` 是 `child` 的 close wrapper，`DESC(p)` 才是“带标点关闭的 child”。若外层谓词、functor 或 aux relation 需要这个带标点关闭的局部成分，应让外层语义边（如 `pred.arg.*`、`func.arg`、`variable`、`body`、`as:*` 展开后的对应边）指向 `p`，而不是只写成 `parent --punctuation--> p`。同一个 `p` 同时作为外层普通 `punctuation` child、又用 `as:punctuation` close 内部 `child`，通常是错误的双重身份；应改为外层关系指向 `p`，或在 `p` 已经有正确语义父边时删除冗余的 `parent --punctuation--> p`。
@@ -1286,6 +1366,9 @@ Modification
 2. `body` 是 `LogicalPredicator`、`ConjunctionalFunctor`、`AttributePredicator`、`ReferentialPredicator` 等非修饰关系节点，而 `Modification` 只是把该关系重新包装成普通修饰。
 3. 删除该 `Modification` 后，把原来指向它的 parent 改指向真正的关系 root，图仍保持 single-root DAG，且所有核心事实、实体、scope 都可通过 `DESC` 恢复。
 4. `Modification` 的存在只是为了让某个标点、wrapper 或 root 连接到图中，而不是表达真实修饰关系。
+5. `Modification.variable` 和 `Modification.body` 的 `DESC` 恢复同一组 token，说明外层 aux 没有新增修饰体或 scope，应删除该空包裹。
+6. `Modification.body` 本身是 `ModificationalFunctor` / `Modification`，且该 body 已经用自己的 `variable` 边指向与外层 `Modification.variable` 相同的可恢复单位时，外层 `Modification` 是重复包裹；外层 parent 应直接指向该 body。典型例子是 `according to`、`prior to`、`close to`、`following`、`so as to` 等 anchored modifier 已经表达了 `variable/body`，外面又套一个无 token `Modification`。
+7. 若 `Modification.body` 已经可以从 `Modification.variable` 的内部边到达，说明 body 已经是 variable 所恢复结构的一部分（常见于 relative clause 已通过 `Ref` 接入，或 complement/adjunct 已作为 predicate argument 接入），外层 `Modification` 又重复挂同一个 body。此时外层 parent 应直接指向 `variable`，再删除该 aux wrapper。
 
 不可判为冗余的情况：
 
@@ -1625,7 +1708,7 @@ Return the evaluation JSON only.
 | 实体任务适配 | 不是核心目标 | 实体或嵌套实体应能由 `SELF` / `DESC` 恢复。 |
 | 属性 | 较弱 | 显式 `Attribute` / `AttributePredicator`。 |
 | 表达式 | 较弱 | 显式 `Expression` / `ExpressionFunctor`。 |
-| 相对从句 | 使用 ref 与反向边 | 保留，并应包装为层级 modification。 |
+| 相对从句 | 使用 `Ref` / `as:ref` 等价结构 | 保留；argument 型 wh/that 通过 `Ref.pred.arg.2 -> Modification` 包装，`when/where` 状语型 relative adverb 可直接作 `Ref.pred.arg.2` 并以 `func.arg` 指向从句 root。 |
 | 评估重点 | OIE/OIX 表达 | 跨任务 analytic units 的 hostability。 |
 
 核心判断：

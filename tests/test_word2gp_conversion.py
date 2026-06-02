@@ -1,9 +1,19 @@
+import json
+from pathlib import Path
+
+import networkx as nx
+
+from lingua.learn.wordgraph.modeler.gp2word import lingua2wordlingua
 from lingua.learn.wordgraph.modeler.word2gp import (
     ensure_single_rooted_dag,
     strip_hierarchy_edge_components,
     wordlingua2lingua,
 )
 from lingua.structure.gpgraph import GPGraph, GPGPhraseNode
+from lingua.utils.metric import graph_match_metric
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def make_graph():
@@ -93,3 +103,28 @@ def test_ensure_single_rooted_dag_does_not_prefer_punctuation_root():
     assert root_texts(graph) == ["runs"]
     assert graph.get_edge(predicate, punctuation).label == "nonsense"
     assert graph.meta["word2gp_repairs"][0]["primary_root"] == "runs"
+
+
+def load_train_graph(index):
+    line = (ROOT / "data" / "train.jsonl").read_text().splitlines()[index]
+    return GPGraph.parse(json.loads(line)["lingua"])
+
+
+def assert_roundtrip_exact(graph):
+    word_graph, _, _ = lingua2wordlingua(graph)
+    assert nx.is_directed_acyclic_graph(word_graph.g)
+
+    restored, _, _ = wordlingua2lingua(word_graph)
+    metric = graph_match_metric(restored, graph, with_spans=True)
+
+    assert metric["exact_same"], metric
+
+
+def test_roundtrip_handles_nested_whether_without_lifting_to_outer_aux():
+    for train_index in [7507, 7908, 9480]:
+        assert_roundtrip_exact(load_train_graph(train_index))
+
+
+def test_roundtrip_does_not_emit_hierarchy_self_loops():
+    for train_index in [1210, 1668, 3924, 4857, 4910]:
+        assert_roundtrip_exact(load_train_graph(train_index))
