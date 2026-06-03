@@ -326,29 +326,14 @@ class EdgeValidator:
                 return EdgeValidationCode.PARENT_IS_NEXT_WORD_TARGET
 
         # -------------------------
-        # @upper/@lower constraints
-        # -------------------------
-        # Note: @upper and @lower are added in Phase 5, not during regular decoding.
-        # But we still validate them if they appear.
-        if lbl in ("@upper", "@lower") or lbl.startswith("upper_") or lbl.startswith("lower_"):
-            # Root cannot emit @upper/@lower edges
-            if p_idx == self.root_idx:
-                return EdgeValidationCode.UPPER_LOWER_FROM_ROOT
-            if self._has_any_non_at_incoming(p_idx):
-                return EdgeValidationCode.UPPER_LOWER_PARENT_HAS_NON_AT_INCOMING
-
-        # opposite direction for order safety
-        if ("@" not in lbl) and self._has_any_upper_lower_outgoing(c_idx):
-            return EdgeValidationCode.ORDER_SAFETY_CHILD_HAS_UPPER_LOWER_OUTGOING
-
-        # -------------------------
         # @-chain consistency
         # -------------------------
+        hierarchy_hint_at = {"@lower", "@upper"}
         if mode != "phase4_forced":
             # Parent-side: if parent has incoming @x, outgoing @y must satisfy y==x and be allowed.
             atc_new = self._at_component(lbl)
-            if atc_new is not None:
-                parent_in_atcs = self._incoming_at_components_for(p_idx, allow_prefix=True)
+            if atc_new is not None and atc_new not in hierarchy_hint_at:
+                parent_in_atcs = self._incoming_at_components_for(p_idx, allow_prefix=True) - hierarchy_hint_at
                 if parent_in_atcs:
                     if len(parent_in_atcs) != 1 or atc_new not in parent_in_atcs:
                         return EdgeValidationCode.AT_CHAIN_PARENT_INCONSISTENT
@@ -357,8 +342,8 @@ class EdgeValidator:
 
             # Child-side: if child already emits @y, adding prefix_@x edge must match/allow.
             atc_new_allow_prefix = self._at_component(lbl, allow_prefix=True)
-            if atc_new_allow_prefix is not None:
-                child_out_atcs = self._outgoing_at_components_for(c_idx)
+            if atc_new_allow_prefix is not None and atc_new_allow_prefix not in hierarchy_hint_at:
+                child_out_atcs = self._outgoing_at_components_for(c_idx) - hierarchy_hint_at
                 if child_out_atcs:
                     # order-sensitive logic in the existing code uses a single outgoing @ component
                     child_out_atc = child_out_atcs.pop()
@@ -369,7 +354,7 @@ class EdgeValidator:
 
                 # sibling-prefix exclusion exists in Phase 2/3 only (not in forced Phase 4)
                 if mode in ("phase2", "phase3"):
-                    sibling_atcs = self._outgoing_at_components_for(p_idx, allow_prefix=True)
+                    sibling_atcs = self._outgoing_at_components_for(p_idx, allow_prefix=True) - hierarchy_hint_at
                     atc_prefix = atc_new_allow_prefix.split("@", 1)[0]
                     if any(atc_prefix == s.split("@", 1)[0] for s in sibling_atcs):
                         return EdgeValidationCode.AT_SIBLING_PREFIX_CONFLICT
@@ -377,8 +362,8 @@ class EdgeValidator:
             # Forced mode mirrors the existing Phase 4 forced-label logic, which uses stricter/older
             # @-component extraction and effectively forbids targeting a node that already emits any "@..." edge.
             atc_new = self._at_component(lbl)
-            if atc_new is not None:
-                parent_in_atcs = self._incoming_at_components_for(p_idx, allow_prefix=False)
+            if atc_new is not None and atc_new not in hierarchy_hint_at:
+                parent_in_atcs = self._incoming_at_components_for(p_idx, allow_prefix=False) - hierarchy_hint_at
                 if parent_in_atcs:
                     if len(parent_in_atcs) != 1 or atc_new not in parent_in_atcs:
                         return EdgeValidationCode.AT_CHAIN_PARENT_INCONSISTENT
@@ -387,7 +372,7 @@ class EdgeValidator:
 
                 # In the original forced-mode code, this check ends up rejecting whenever the child
                 # has ANY outgoing "@..." edge (due to a set-vs-str comparison). We preserve that behavior.
-                child_out_atcs = self._outgoing_at_components_for(c_idx, allow_prefix=False)
+                child_out_atcs = self._outgoing_at_components_for(c_idx, allow_prefix=False) - hierarchy_hint_at
                 if child_out_atcs:
                     return EdgeValidationCode.AT_CHAIN_CHILD_INCONSISTENT
                 if atc_new not in self.allowed_chain_at:

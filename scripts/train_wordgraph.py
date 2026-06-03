@@ -46,6 +46,9 @@ from lingua.learn.wordgraph.model.biaffine import (
     WordLinguaParserV2,
     build_node_type_maps,
 )
+from lingua.learn.wordgraph.model.edge_label_factors import (
+    build_edge_factor_maps,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -344,12 +347,16 @@ def compute_loss_v2(model_output: Dict[str, torch.Tensor],
                     is_root: torch.Tensor,
                     child_of_whether: torch.Tensor,
                     node_type: torch.Tensor,
-                    word_mask: torch.Tensor) -> Dict[str, torch.Tensor]:
+                    word_mask: torch.Tensor,
+                    edge_factor_id_by_label: Optional[Dict[str, torch.Tensor]] = None,
+                    edge_factor_loss_names: Optional[set[str]] = None,
+                    ) -> Dict[str, torch.Tensor]:
     """
     Compute loss for all prediction tasks.
     """
     arc_logits = model_output["arc_logits"]
     rel_logits = model_output["rel_logits"]
+    edge_factor_logits = model_output.get("edge_factor_logits") or {}
     child_of_whether_logits = model_output["child_of_whether_logits"]
     node_type_logits = model_output["node_type_logits"]
     is_root_logits = model_output["is_root_logits"]
@@ -377,6 +384,28 @@ def compute_loss_v2(model_output: Dict[str, torch.Tensor],
         rel_loss = F.cross_entropy(rel_logits_selected, rel_targets)
     else:
         rel_loss = torch.tensor(0.0, device=device)
+
+    # Edge factor losses. These are auxiliary targets derived from the same
+    # legal edge label inventory; decoding still uses rel_logits.
+    edge_factor_losses: Dict[str, torch.Tensor] = {}
+    if edge_mask.any() and edge_factor_logits and edge_factor_id_by_label:
+        rel_targets = arc_labels[edge_mask]
+        for factor_name, factor_logits in edge_factor_logits.items():
+            if edge_factor_loss_names is not None and factor_name not in edge_factor_loss_names:
+                continue
+            if factor_name not in edge_factor_id_by_label:
+                continue
+            factor_targets_by_label = edge_factor_id_by_label[factor_name].to(device)
+            factor_targets = factor_targets_by_label[rel_targets]
+            factor_logits_selected = factor_logits[edge_mask]
+            edge_factor_losses[factor_name] = F.cross_entropy(
+                factor_logits_selected,
+                factor_targets,
+            )
+    if edge_factor_losses:
+        edge_factor_loss = torch.stack(list(edge_factor_losses.values())).mean()
+    else:
+        edge_factor_loss = torch.tensor(0.0, device=device)
     
     # Child of whether loss (node-level)
     if word_mask.any():
@@ -406,14 +435,21 @@ def compute_loss_v2(model_output: Dict[str, torch.Tensor],
     return {
         "arc_loss": arc_loss,
         "rel_loss": rel_loss,
+        "edge_factor_loss": edge_factor_loss,
         "child_of_whether_loss": cow_loss,
         "node_type_loss": node_type_loss,
         "is_root_loss": is_root_loss,
+        **{
+            f"edge_factor_{name}_loss": value
+            for name, value in edge_factor_losses.items()
+        },
     }
 
 
 def evaluate_v2(model: nn.Module, dataloader: DataLoader, 
-                device: torch.device, id2label: Dict[int, str]) -> Dict[str, float]:
+                device: torch.device, id2label: Dict[int, str],
+                edge_factor_id_by_label: Optional[Dict[str, torch.Tensor]] = None
+                ) -> Dict[str, float]:
     """Evaluate the model on a dataset (v2)."""
     model.eval()
     
@@ -434,6 +470,9 @@ def evaluate_v2(model: nn.Module, dataloader: DataLoader,
     total_is_root_correct = 0
     total_is_root_pred = 0
     total_is_root_gold = 0
+
+    total_factor_correct: Dict[str, int] = defaultdict(int)
+    total_factor_total: Dict[str, int] = defaultdict(int)
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
@@ -450,6 +489,7 @@ def evaluate_v2(model: nn.Module, dataloader: DataLoader,
             
             arc_logits = output["arc_logits"]
             rel_logits = output["rel_logits"]
+            edge_factor_logits = output.get("edge_factor_logits") or {}
             cow_logits = output["child_of_whether_logits"]
             node_type_logits = output["node_type_logits"]
             is_root_logits = output["is_root_logits"]
@@ -470,6 +510,18 @@ def evaluate_v2(model: nn.Module, dataloader: DataLoader,
                 rel_correct = (rel_preds == arc_labels) & edge_match
                 total_rel_correct += rel_correct.sum().item()
                 total_rel_gold += edge_match.sum().item()
+
+            edge_gold_mask = arc_gold & pairwise_mask
+            if edge_gold_mask.any() and edge_factor_logits and edge_factor_id_by_label:
+                rel_targets = arc_labels[edge_gold_mask]
+                for factor_name, factor_logits in edge_factor_logits.items():
+                    if factor_name not in edge_factor_id_by_label:
+                        continue
+                    factor_targets_by_label = edge_factor_id_by_label[factor_name].to(device)
+                    factor_targets = factor_targets_by_label[rel_targets]
+                    factor_preds = factor_logits[edge_gold_mask].argmax(dim=-1)
+                    total_factor_correct[factor_name] += (factor_preds == factor_targets).sum().item()
+                    total_factor_total[factor_name] += factor_targets.numel()
             
             # Child of whether predictions
             cow_preds = cow_logits.argmax(dim=-1)
@@ -509,6 +561,17 @@ def evaluate_v2(model: nn.Module, dataloader: DataLoader,
     is_root_precision = total_is_root_correct / (total_is_root_pred + 1e-8)
     is_root_recall = total_is_root_correct / (total_is_root_gold + 1e-8)
     is_root_f1 = 2 * is_root_precision * is_root_recall / (is_root_precision + is_root_recall + 1e-8)
+
+    factor_metrics = {
+        f"edge_factor_{name}_accuracy": (
+            total_factor_correct[name] / (total_factor_total[name] + 1e-8)
+        )
+        for name in total_factor_total
+    }
+    edge_factor_accuracy = (
+        sum(factor_metrics.values()) / len(factor_metrics)
+        if factor_metrics else 0.0
+    )
     
     return {
         "arc_precision": arc_precision,
@@ -525,6 +588,8 @@ def evaluate_v2(model: nn.Module, dataloader: DataLoader,
         "is_root_precision": is_root_precision,
         "is_root_recall": is_root_recall,
         "is_root_f1": is_root_f1,
+        "edge_factor_accuracy": edge_factor_accuracy,
+        **factor_metrics,
     }
 
 
@@ -535,13 +600,18 @@ def train_epoch_v2(model: nn.Module, dataloader: DataLoader,
                    rel_weight: float = 1.0,
                    cow_weight: float = 1.0,
                    node_type_weight: float = 1.0,
-                   is_root_weight: float = 1.0) -> Dict[str, float]:
+                   is_root_weight: float = 1.0,
+                   edge_factor_weight: float = 0.2,
+                   edge_factor_id_by_label: Optional[Dict[str, torch.Tensor]] = None,
+                   edge_factor_loss_names: Optional[set[str]] = None,
+                   ) -> Dict[str, float]:
     """Train for one epoch (v2)."""
 
     model.train()
     
     total_arc_loss = 0.0
     total_rel_loss = 0.0
+    total_edge_factor_loss = 0.0
     total_cow_loss = 0.0
     total_node_type_loss = 0.0
     total_is_root_loss = 0.0
@@ -562,10 +632,20 @@ def train_epoch_v2(model: nn.Module, dataloader: DataLoader,
         output = model(input_ids, attention_mask, word_to_subword, word_mask)
         
         # Compute loss
-        losses = compute_loss_v2(output, arc_labels, is_root, child_of_whether, node_type, word_mask)
+        losses = compute_loss_v2(
+            output,
+            arc_labels,
+            is_root,
+            child_of_whether,
+            node_type,
+            word_mask,
+            edge_factor_id_by_label=edge_factor_id_by_label,
+            edge_factor_loss_names=edge_factor_loss_names,
+        )
         
         loss = (arc_weight * losses["arc_loss"] + 
                 rel_weight * losses["rel_loss"] +
+                edge_factor_weight * losses["edge_factor_loss"] +
                 cow_weight * losses["child_of_whether_loss"] +
                 node_type_weight * losses["node_type_loss"] +
                 is_root_weight * losses["is_root_loss"])
@@ -578,6 +658,7 @@ def train_epoch_v2(model: nn.Module, dataloader: DataLoader,
         
         total_arc_loss += losses["arc_loss"].item()
         total_rel_loss += losses["rel_loss"].item()
+        total_edge_factor_loss += losses["edge_factor_loss"].item()
         total_cow_loss += losses["child_of_whether_loss"].item()
         total_node_type_loss += losses["node_type_loss"].item()
         total_is_root_loss += losses["is_root_loss"].item()
@@ -586,6 +667,7 @@ def train_epoch_v2(model: nn.Module, dataloader: DataLoader,
         progress_bar.set_postfix({
             "arc": f"{losses['arc_loss'].item():.4f}",
             "rel": f"{losses['rel_loss'].item():.4f}",
+            "ef": f"{losses['edge_factor_loss'].item():.4f}",
             "cow": f"{losses['child_of_whether_loss'].item():.4f}",
             "ntype": f"{losses['node_type_loss'].item():.4f}"
         })
@@ -593,6 +675,7 @@ def train_epoch_v2(model: nn.Module, dataloader: DataLoader,
     return {
         "arc_loss": total_arc_loss / num_batches,
         "rel_loss": total_rel_loss / num_batches,
+        "edge_factor_loss": total_edge_factor_loss / num_batches,
         "child_of_whether_loss": total_cow_loss / num_batches,
         "node_type_loss": total_node_type_loss / num_batches,
         "is_root_loss": total_is_root_loss / num_batches,
@@ -606,6 +689,20 @@ def train_epoch_v2(model: nn.Module, dataloader: DataLoader,
 def _ordered_vocab(counter: Counter) -> List[str]:
     """Return labels in first-seen order from a Counter."""
     return list(counter.keys())
+
+
+def parse_edge_factor_loss_names(value: str, available_names: List[str]) -> List[str]:
+    """Parse a comma-separated factor-loss selection."""
+    value = (value or "").strip()
+    if not value or value.lower() == "none":
+        return []
+    if value.lower() == "all":
+        return list(available_names)
+    requested = [part.strip() for part in value.split(",") if part.strip()]
+    unknown = sorted(set(requested) - set(available_names))
+    if unknown:
+        raise ValueError(f"Unknown edge factor loss names: {unknown}; available={available_names}")
+    return requested
 
 
 def build_vocab_v2(
@@ -663,6 +760,9 @@ def export_pretrained_bundle(
     label2id: Dict[str, int],
     edge_types: List[str],
     node_types: List[str],
+    edge_factor_vocabs: Dict[str, List[str]],
+    edge_label_factors: Dict[str, Dict[str, str]],
+    edge_factor_loss_names: List[str],
     bert_model_name: str,
     arc_hidden_size: int,
     rel_hidden_size: int,
@@ -684,6 +784,12 @@ def export_pretrained_bundle(
     with open(os.path.join(output_dir, "node_types.json"), "w", encoding="utf-8") as f:
         json.dump(node_types, f, indent=2, ensure_ascii=False)
 
+    with open(os.path.join(output_dir, "edge_factor_vocabs.json"), "w", encoding="utf-8") as f:
+        json.dump(edge_factor_vocabs, f, indent=2, ensure_ascii=False)
+
+    with open(os.path.join(output_dir, "edge_label_factors.json"), "w", encoding="utf-8") as f:
+        json.dump(edge_label_factors, f, indent=2, ensure_ascii=False)
+
     with open(os.path.join(output_dir, "config.json"), "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -695,6 +801,9 @@ def export_pretrained_bundle(
                 "word_pooling": word_pooling,
                 "edge_types": edge_types,
                 "node_types": node_types,
+                "edge_factor_vocabs": edge_factor_vocabs,
+                "edge_label_factors": edge_label_factors,
+                "edge_factor_loss_names": edge_factor_loss_names,
             },
             f,
             indent=2,
@@ -718,6 +827,9 @@ def save_model_variant(
     label2id: Dict[str, int],
     edge_types: List[str],
     node_types: List[str],
+    edge_factor_vocabs: Dict[str, List[str]],
+    edge_label_factors: Dict[str, Dict[str, str]],
+    edge_factor_loss_names: List[str],
     bert_model_name: str,
     arc_hidden_size: int,
     rel_hidden_size: int,
@@ -742,6 +854,9 @@ def save_model_variant(
         "label2id": label2id,
         "edge_types": edge_types,
         "node_types": node_types,
+        "edge_factor_vocabs": edge_factor_vocabs,
+        "edge_label_factors": edge_label_factors,
+        "edge_factor_loss_names": edge_factor_loss_names,
     }
     torch.save(checkpoint, os.path.join(output_dir, checkpoint_name))
     if legacy_checkpoint_name:
@@ -754,6 +869,9 @@ def save_model_variant(
         label2id=label2id,
         edge_types=edge_types,
         node_types=node_types,
+        edge_factor_vocabs=edge_factor_vocabs,
+        edge_label_factors=edge_label_factors,
+        edge_factor_loss_names=edge_factor_loss_names,
         bert_model_name=bert_model_name,
         arc_hidden_size=arc_hidden_size,
         rel_hidden_size=rel_hidden_size,
@@ -770,6 +888,9 @@ def save_model_variant(
             label2id=label2id,
             edge_types=edge_types,
             node_types=node_types,
+            edge_factor_vocabs=edge_factor_vocabs,
+            edge_label_factors=edge_label_factors,
+            edge_factor_loss_names=edge_factor_loss_names,
             bert_model_name=bert_model_name,
             arc_hidden_size=arc_hidden_size,
             rel_hidden_size=rel_hidden_size,
@@ -798,6 +919,23 @@ def main(args):
     test_path = os.path.join(args.data_dir, "test.jsonl")
     
     edge_types, label2id, id2label, node_types, node_type2id, _ = build_vocab_v2([train_path])
+    edge_factor_maps = build_edge_factor_maps(edge_types)
+    edge_factor_vocabs = edge_factor_maps.factor_vocabs
+    edge_label_factors = edge_factor_maps.label_factors
+    edge_factor_loss_names = parse_edge_factor_loss_names(
+        args.edge_factor_loss_names,
+        list(edge_factor_vocabs.keys()),
+    )
+    edge_factor_loss_name_set = set(edge_factor_loss_names)
+    edge_factor_id_by_label = {
+        name: torch.tensor(values, dtype=torch.long)
+        for name, values in edge_factor_maps.id_targets_by_label(edge_types).items()
+    }
+    logger.info(
+        "Built edge factor vocabularies: "
+        + ", ".join(f"{name}={len(values)}" for name, values in edge_factor_vocabs.items())
+    )
+    logger.info(f"Using edge factor losses: {edge_factor_loss_names or 'none'}")
     
     # Save vocabularies at the run root as well as inside exported bundles.
     os.makedirs(args.output_dir, exist_ok=True)
@@ -807,6 +945,10 @@ def main(args):
         json.dump(edge_types, f, indent=2, ensure_ascii=False)
     with open(os.path.join(args.output_dir, "node_types.json"), "w", encoding="utf-8") as f:
         json.dump(node_types, f, indent=2, ensure_ascii=False)
+    with open(os.path.join(args.output_dir, "edge_factor_vocabs.json"), "w", encoding="utf-8") as f:
+        json.dump(edge_factor_vocabs, f, indent=2, ensure_ascii=False)
+    with open(os.path.join(args.output_dir, "edge_label_factors.json"), "w", encoding="utf-8") as f:
+        json.dump(edge_label_factors, f, indent=2, ensure_ascii=False)
     
     # Load tokenizer
     logger.info(f"Loading tokenizer from {args.bert_model}...")
@@ -845,6 +987,7 @@ def main(args):
         init_bert_model_name=args.bert_model,
         edge_types=edge_types,
         node_types=node_types,
+        edge_factor_vocabs=edge_factor_vocabs,
         arc_hidden_size=args.arc_hidden_size,
         rel_hidden_size=args.rel_hidden_size,
         node_hidden_size=args.node_hidden_size,
@@ -857,8 +1000,8 @@ def main(args):
     optimizer = AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     
     # Training loop
-    best_combined_f1 = 0.0
-    best_labeled_f1 = 0.0
+    best_combined_f1 = -1.0
+    best_labeled_f1 = -1.0
     
     for epoch in range(args.num_epochs):
         logger.info(f"\n{'='*50}")
@@ -872,25 +1015,43 @@ def main(args):
             cow_weight=args.cow_weight,
             node_type_weight=args.node_type_weight,
             is_root_weight=args.is_root_weight,
+            edge_factor_weight=args.edge_factor_weight,
+            edge_factor_id_by_label=edge_factor_id_by_label,
+            edge_factor_loss_names=edge_factor_loss_name_set,
         )
         logger.info(f"Train - Arc Loss: {train_metrics['arc_loss']:.4f}, "
                    f"Rel Loss: {train_metrics['rel_loss']:.4f}, "
+                   f"EdgeFactor Loss: {train_metrics['edge_factor_loss']:.4f}, "
                    f"CoW Loss: {train_metrics['child_of_whether_loss']:.4f}, "
                    f"NodeType Loss: {train_metrics['node_type_loss']:.4f}, "
                    f"IsRoot Loss: {train_metrics['is_root_loss']:.4f}")
         
         # Evaluate on train
-        train_eval_metrics = evaluate_v2(model, train_loader, device, id2label)
+        train_eval_metrics = evaluate_v2(
+            model,
+            train_loader,
+            device,
+            id2label,
+            edge_factor_id_by_label=edge_factor_id_by_label,
+        )
         logger.info(f"Train - Arc F1: {train_eval_metrics['arc_f1']:.4f}, "
                    f"Labeled F1: {train_eval_metrics['labeled_f1']:.4f}, "
+                   f"EdgeFactor Acc: {train_eval_metrics['edge_factor_accuracy']:.4f}, "
                    f"CoW F1: {train_eval_metrics['child_of_whether_f1']:.4f}, "
                    f"NodeType Acc: {train_eval_metrics['node_type_accuracy']:.4f}, "
                    f"IsRoot F1: {train_eval_metrics['is_root_f1']:.4f}")
         
         # Evaluate on dev
-        dev_metrics = evaluate_v2(model, dev_loader, device, id2label)
+        dev_metrics = evaluate_v2(
+            model,
+            dev_loader,
+            device,
+            id2label,
+            edge_factor_id_by_label=edge_factor_id_by_label,
+        )
         logger.info(f"Dev   - Arc F1: {dev_metrics['arc_f1']:.4f}, "
                    f"Labeled F1: {dev_metrics['labeled_f1']:.4f}, "
+                   f"EdgeFactor Acc: {dev_metrics['edge_factor_accuracy']:.4f}, "
                    f"CoW F1: {dev_metrics['child_of_whether_f1']:.4f}, "
                    f"NodeType Acc: {dev_metrics['node_type_accuracy']:.4f}, "
                    f"IsRoot F1: {dev_metrics['is_root_f1']:.4f}")
@@ -916,6 +1077,9 @@ def main(args):
                 label2id=label2id,
                 edge_types=edge_types,
                 node_types=node_types,
+                edge_factor_vocabs=edge_factor_vocabs,
+                edge_label_factors=edge_label_factors,
+                edge_factor_loss_names=edge_factor_loss_names,
                 bert_model_name=args.bert_model,
                 arc_hidden_size=args.arc_hidden_size,
                 rel_hidden_size=args.rel_hidden_size,
@@ -944,6 +1108,9 @@ def main(args):
                 label2id=label2id,
                 edge_types=edge_types,
                 node_types=node_types,
+                edge_factor_vocabs=edge_factor_vocabs,
+                edge_label_factors=edge_label_factors,
+                edge_factor_loss_names=edge_factor_loss_names,
                 bert_model_name=args.bert_model,
                 arc_hidden_size=args.arc_hidden_size,
                 rel_hidden_size=args.rel_hidden_size,
@@ -968,6 +1135,9 @@ def main(args):
         label2id=label2id,
         edge_types=edge_types,
         node_types=node_types,
+        edge_factor_vocabs=edge_factor_vocabs,
+        edge_label_factors=edge_label_factors,
+        edge_factor_loss_names=edge_factor_loss_names,
         bert_model_name=args.bert_model,
         arc_hidden_size=args.arc_hidden_size,
         rel_hidden_size=args.rel_hidden_size,
@@ -991,10 +1161,17 @@ def main(args):
     checkpoint = torch.load(os.path.join(args.output_dir, "best_combined.pt"), map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     
-    test_metrics = evaluate_v2(model, test_loader, device, id2label)
+    test_metrics = evaluate_v2(
+        model,
+        test_loader,
+        device,
+        id2label,
+        edge_factor_id_by_label=edge_factor_id_by_label,
+    )
     
     logger.info(f"Test - Arc F1: {test_metrics['arc_f1']:.4f}")
     logger.info(f"Test - Labeled F1: {test_metrics['labeled_f1']:.4f}")
+    logger.info(f"Test - EdgeFactor Accuracy: {test_metrics['edge_factor_accuracy']:.4f}")
     logger.info(f"Test - Child of Whether P/R/F1: "
                 f"{test_metrics['child_of_whether_precision']:.4f}/"
                 f"{test_metrics['child_of_whether_recall']:.4f}/"
@@ -1016,6 +1193,9 @@ def main(args):
         label2id=label2id,
         edge_types=edge_types,
         node_types=node_types,
+        edge_factor_vocabs=edge_factor_vocabs,
+        edge_label_factors=edge_label_factors,
+        edge_factor_loss_names=edge_factor_loss_names,
         bert_model_name=args.bert_model,
         arc_hidden_size=args.arc_hidden_size,
         rel_hidden_size=args.rel_hidden_size,
@@ -1068,6 +1248,11 @@ if __name__ == "__main__":
                        help="Weight for arc loss")
     parser.add_argument("--rel_weight", type=float, default=1.0,
                        help="Weight for relation loss")
+    parser.add_argument("--edge_factor_weight", type=float, default=0.2,
+                       help="Weight for auxiliary factorized edge-label losses")
+    parser.add_argument("--edge_factor_loss_names", type=str,
+                       default="semantic,role,hierarchy,surface",
+                       help="Comma-separated edge factor losses to train, or 'all'/'none'")
     parser.add_argument("--cow_weight", type=float, default=2.0,
                        help="Weight for child_of_whether loss")
     parser.add_argument("--node_type_weight", type=float, default=1.0,

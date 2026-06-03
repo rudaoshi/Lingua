@@ -1,8 +1,10 @@
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, Mapping, Optional, Sequence, Tuple
 import logging
 
 import torch
 import torch.nn as nn
+
+from .edge_label_factors import normalize_edge_factor_vocabs
 
 logger = logging.getLogger(__name__)
 def build_node_type_maps(node_types: Sequence[str]) -> Tuple[Dict[str, int], Dict[int, str]]:
@@ -78,9 +80,11 @@ class BiaffineLayer(nn.Module):
     
     def __init__(self, input_size: int, label_num: int,
                  arc_hidden_size: int = 500, rel_hidden_size: int = 100,
-                 dropout: float = 0.1):
+                 dropout: float = 0.1,
+                 edge_factor_vocabs: Optional[Mapping[str, Sequence[str]]] = None):
         super().__init__()
         self.label_num = label_num
+        self.edge_factor_vocabs = normalize_edge_factor_vocabs(edge_factor_vocabs)
         
         # MLPs for arc prediction
         self.mlp_arc_h = MLP(input_size, arc_hidden_size, dropout)
@@ -93,6 +97,12 @@ class BiaffineLayer(nn.Module):
         # Bilinear layers
         self.arc_atten = PairwiseBilinear(arc_hidden_size, arc_hidden_size, 1)
         self.rel_atten = PairwiseBilinear(rel_hidden_size, rel_hidden_size, label_num)
+        self.edge_factor_attens = nn.ModuleDict(
+            {
+                name: PairwiseBilinear(rel_hidden_size, rel_hidden_size, len(values))
+                for name, values in self.edge_factor_vocabs.items()
+            }
+        )
     
     def forward(self, input: torch.Tensor, 
                 attention_mask: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
@@ -118,17 +128,27 @@ class BiaffineLayer(nn.Module):
         
         # Compute relation scores: (batch, seq_len, seq_len, label_num)
         s_rel = self.rel_atten(rel_d, rel_h)
+
+        edge_factor_logits = {
+            name: layer(rel_d, rel_h)
+            for name, layer in self.edge_factor_attens.items()
+        }
         
         # Create pairwise mask if attention_mask is provided
         if attention_mask is not None:
             pairwise_mask = attention_mask.unsqueeze(-1) & attention_mask.unsqueeze(-2)
             s_rel = s_rel.masked_fill(~pairwise_mask.unsqueeze(-1), -1e9)
+            edge_factor_logits = {
+                name: logits.masked_fill(~pairwise_mask.unsqueeze(-1), -1e9)
+                for name, logits in edge_factor_logits.items()
+            }
         else:
             pairwise_mask = None
         
         return {
             "arc_logits": s_arc,
             "rel_logits": s_rel,
+            "edge_factor_logits": edge_factor_logits,
             "mask": pairwise_mask
         }
 
@@ -179,6 +199,7 @@ class WordLinguaParserV2(nn.Module):
                  num_node_types: Optional[int] = None,
                  edge_types: Optional[Sequence[str]] = None,
                  node_types: Optional[Sequence[str]] = None,
+                 edge_factor_vocabs: Optional[Mapping[str, Sequence[str]]] = None,
                  init_bert_model_name: Optional[str] = None,
                  arc_hidden_size: int = 500, rel_hidden_size: int = 100,
                  node_hidden_size: int = 256,
@@ -190,6 +211,7 @@ class WordLinguaParserV2(nn.Module):
             num_node_types: Number of node types. Derived from node_types when provided.
             edge_types: Ordered edge label vocabulary supplied by training/loading code.
             node_types: Ordered node type vocabulary supplied by training/loading code.
+            edge_factor_vocabs: Optional auxiliary edge-factor vocabularies.
             init_bert_model_name: Name of BERT model to download from HuggingFace Hub
                                  for model initialization (e.g., 'bert-base-cased').
                                  Used only during training. Ignored if pretrained_model_path is provided.
@@ -205,6 +227,7 @@ class WordLinguaParserV2(nn.Module):
         super().__init__()
         self.edge_types = list(edge_types) if edge_types is not None else None
         self.node_types = list(node_types) if node_types is not None else None
+        self.edge_factor_vocabs = normalize_edge_factor_vocabs(edge_factor_vocabs)
         if self.edge_types is not None:
             label_num = len(self.edge_types)
         if self.node_types is not None:
@@ -261,7 +284,8 @@ class WordLinguaParserV2(nn.Module):
             label_num=label_num,
             arc_hidden_size=arc_hidden_size,
             rel_hidden_size=rel_hidden_size,
-            dropout=dropout
+            dropout=dropout,
+            edge_factor_vocabs=self.edge_factor_vocabs,
         )
         
         # Node classifiers
@@ -382,6 +406,7 @@ class WordLinguaParserV2(nn.Module):
         return {
             "arc_logits": biaffine_result["arc_logits"],
             "rel_logits": biaffine_result["rel_logits"],
+            "edge_factor_logits": biaffine_result["edge_factor_logits"],
             "mask": biaffine_result["mask"],
             "child_of_whether_logits": child_of_whether_logits,
             "node_type_logits": node_type_logits,

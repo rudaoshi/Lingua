@@ -348,14 +348,11 @@ class GreedyPatternDecoder:
                 # Get label probabilities
                 for label_id in range(rel_probs.shape[2]):
                     label = self.id2label.get(label_id, "UNK")
+                    if label == "UNK" or label not in self.label2id:
+                        continue
                     rel_prob = rel_probs[i, j, label_id]
                     
                     if rel_prob > 0.01:  # Filter very low probability labels
-                        # Filter out @upper and @lower edges in Phase 1 as requested
-                        # These should only be added via structural logic in Phase 5
-                        if label in ["@upper", "@lower"]:
-                            continue
-
                         candidate_edges.append({
                             "parent": i,
                             "child": j,
@@ -731,6 +728,8 @@ class GreedyPatternDecoder:
             rel_vec = rel_probs[p_idx, c_idx]
             for lid in np.argsort(rel_vec)[::-1]:
                 lbl = self.id2label.get(int(lid), "UNK")
+                if lbl == "UNK" or lbl not in self.label2id:
+                    continue
                 code = validator.validate(
                     p_idx, c_idx, lbl,
                     mode=mode,
@@ -1163,7 +1162,7 @@ class GreedyPatternDecoder:
             rel_vec = rel_probs[p_idx, c_idx]
             for lid in np.argsort(rel_vec)[::-1]:
                 lbl = self.id2label.get(int(lid), "UNK")
-                if lbl == "UNK" or lbl == "nonsense":
+                if lbl == "UNK" or lbl == "nonsense" or lbl not in self.label2id:
                     continue
                 code = validator.validate(
                     p_idx,
@@ -1442,7 +1441,7 @@ class GreedyPatternDecoder:
                             if edge_label.startswith("@") and edge_label in self.PRIMARY_AT_EDGES:
                                 # Add @lower edge from p_idx to head_child
                                 p_node = word_to_node[p_idx]
-                                if not graph.has_edge(p_node, head_child_node):
+                                if "@lower" in self.label2id and not graph.has_edge(p_node, head_child_node):
                                     graph.add_edge(p_node, head_child_node, GPGEdge(label="@lower"))
                                     node_outgoing_edges[p_idx].append("@lower")
                                     node_incoming_edges[head_child].append("@lower")
@@ -1787,15 +1786,11 @@ class GreedyPatternDecoder:
         - Only 'func.arg' edges can be duplicated (for ConjunctionalFunctor, ExpressionFunctor)
         - PRIMARY_AT_EDGES (like @modification_of, @list, etc.) can have multiple occurrences
         - Each specific PRIMARY_AT_EDGE label can only appear once per node
-        - @upper and @lower edges are NOT added during decoding (they are added in Phase 5)
+        - @upper and @lower are legal decoder labels when they are present in
+          the training edge vocabulary.
         
         Uses statistics when available to get max edge counts.
         """
-        # @upper and @lower should not be added during normal decoding
-        # They will be added in Phase 5 as post-processing
-        if new_label in {"@upper", "@lower"}:
-            return False
-
         # First, try to use statistics to get max allowed count for this edge label
         max_count = self._get_max_edge_count(node_type, new_label, is_root)
         
@@ -1894,7 +1889,7 @@ class GreedyPatternDecoder:
                             # grandchild → child_j: @upper
                             if not graph.has_edge(grandchild, child_j):
                                 existing_edge = graph.get_edge(grandchild, child_j)
-                                if existing_edge is None:
+                                if existing_edge is None and "@upper" in self.label2id:
                                     graph.add_edge(grandchild, child_j, GPGEdge(label="@upper"))
                                     phase5_edges_added.append({
                                         "from": grandchild.ID,
@@ -1906,7 +1901,7 @@ class GreedyPatternDecoder:
                             # child_j → grandchild: @lower
                             if not graph.has_edge(child_j, grandchild):
                                 existing_edge = graph.get_edge(child_j, grandchild)
-                                if existing_edge is None:
+                                if existing_edge is None and "@lower" in self.label2id:
                                     graph.add_edge(child_j, grandchild, GPGEdge(label="@lower"))
                                     phase5_edges_added.append({
                                         "from": child_j.ID,
@@ -1937,7 +1932,7 @@ class GreedyPatternDecoder:
                         # node → grandchild: @lower
                         if not graph.has_edge(node, grandchild):
                             existing_edge = graph.get_edge(node, grandchild)
-                            if existing_edge is None:
+                            if existing_edge is None and "@lower" in self.label2id:
                                 graph.add_edge(node, grandchild, GPGEdge(label="@lower"))
                                 phase5_edges_added.append({
                                     "from": node.ID,
@@ -1962,7 +1957,7 @@ class GreedyPatternDecoder:
     ) -> List[str]:
         """
         Validate the word-lingua graph to ensure:
-        1. All edge labels are in the allowed label set
+        1. All full edge labels are in the training label vocabulary
         2. All node types are in the allowed set
         3. The graph is a single-rooted DAG
         
@@ -1976,12 +1971,12 @@ class GreedyPatternDecoder:
         # 1. Check edge labels
         allowed_labels = set(self.label2id.keys())
         for parent, edge, child in list(graph.edges()):
-            # Edge labels can be compound (joined by "+")
             edge_label = str(edge.label)
-            label_components = edge_label.split("+")
-            for component in label_components:
-                if component not in allowed_labels:
-                    errors.append(f"Invalid edge label component: '{component}' in '{edge_label}'")
+            if edge_label not in allowed_labels:
+                errors.append(
+                    f"Invalid edge label not in training vocabulary: "
+                    f"'{graph.node_text(parent)}' --{edge_label}--> '{graph.node_text(child)}'"
+                )
         
         # 2. Check node types
         allowed_node_types = set(self.id2node_type.values())

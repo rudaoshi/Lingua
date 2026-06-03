@@ -31,12 +31,13 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from lingua.structure.gpgraph import GPGraph, GPGPhraseNode, GPGEdge
+from lingua.learn.wordgraph.model.edge_label_factors import FACTOR_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class WordLinguaModelOutputs:
     """Standardized model output container."""
     arc_logits: torch.Tensor  # [B, N, N]
     rel_logits: torch.Tensor  # [B, N, N, L]
+    edge_factor_logits: Optional[Dict[str, torch.Tensor]] = None  # [B, N, N, F]
     node_type_logits: Optional[torch.Tensor] = None  # [B, N, T]
     child_of_whether_logits: Optional[torch.Tensor] = None  # [B, N, 2]
     is_root_logits: Optional[torch.Tensor] = None  # [B, N, 2]
@@ -206,6 +208,7 @@ def extract_outputs(out: Dict[str, Any]) -> WordLinguaModelOutputs:
     return WordLinguaModelOutputs(
         arc_logits=out["arc_logits"],
         rel_logits=out["rel_logits"],
+        edge_factor_logits=out.get("edge_factor_logits"),
         node_type_logits=out.get("node_type_logits"),
         child_of_whether_logits=out.get("child_of_whether_logits"),
         is_root_logits=out.get("is_root_logits"),
@@ -288,6 +291,70 @@ def node_pos_from_node_type_logits(
     return node_pos
 
 
+def build_edge_factor_targets_for_labels(
+    *,
+    id2label: Mapping[int, str],
+    edge_factor_vocabs: Optional[Mapping[str, List[str]]],
+    edge_label_factors: Optional[Mapping[str, Mapping[str, str]]],
+) -> Dict[str, torch.Tensor]:
+    """Build factor target ids for each legal edge label id."""
+    if not edge_factor_vocabs or not edge_label_factors:
+        return {}
+
+    ordered_labels = [id2label[i] for i in range(len(id2label))]
+    targets: Dict[str, torch.Tensor] = {}
+    for factor_name in FACTOR_NAMES:
+        if factor_name not in edge_factor_vocabs:
+            continue
+        value2id = {
+            value: idx
+            for idx, value in enumerate(edge_factor_vocabs[factor_name])
+        }
+        factor_targets: List[int] = []
+        for label in ordered_labels:
+            label_factors = edge_label_factors.get(label)
+            if label_factors is None:
+                raise ValueError(f"missing edge factor decomposition for label: {label}")
+            value = label_factors.get(factor_name)
+            if value not in value2id:
+                raise ValueError(
+                    f"edge factor value {value!r} for {factor_name}/{label} is not in vocabulary"
+                )
+            factor_targets.append(value2id[value])
+        targets[factor_name] = torch.tensor(factor_targets, dtype=torch.long)
+    return targets
+
+
+def combine_rel_logits_with_edge_factor_logits(
+    *,
+    rel_logits: torch.Tensor,
+    edge_factor_logits: Optional[Mapping[str, torch.Tensor]],
+    edge_factor_targets_by_label: Mapping[str, torch.Tensor],
+    weight: float,
+) -> torch.Tensor:
+    """Combine relation logits with legal-label factor evidence for decoding."""
+    if weight <= 0 or not edge_factor_logits or not edge_factor_targets_by_label:
+        return rel_logits
+
+    factor_score = torch.zeros_like(rel_logits)
+    factor_count = 0
+    for factor_name, targets in edge_factor_targets_by_label.items():
+        if factor_name not in edge_factor_logits:
+            continue
+        logits = edge_factor_logits[factor_name]
+        target_ids = targets.to(device=logits.device)
+        label_factor_scores = torch.log_softmax(logits, dim=-1).index_select(
+            dim=-1,
+            index=target_ids,
+        )
+        factor_score = factor_score + label_factor_scores.to(device=rel_logits.device)
+        factor_count += 1
+
+    if factor_count == 0:
+        return rel_logits
+    return rel_logits + weight * (factor_score / factor_count)
+
+
 # ============================================================================
 # Inference Configuration and Result
 # ============================================================================
@@ -310,6 +377,7 @@ class InferenceConfig:
     lam_sibling_prob: float = 1.0
     lam_pos_prob: float = 1.0
     lam_parent_given_child_prob: float = 1.0
+    edge_factor_decode_weight: float = 0.0
     
     # Debug config
     debug: bool = False
@@ -374,6 +442,8 @@ class WordLinguaInference:
         config: InferenceConfig,
         statistics: Optional[Any] = None,  # WordLinguaStatistics
         id2node_type: Optional[Dict[int, str]] = None,
+        edge_factor_vocabs: Optional[Mapping[str, List[str]]] = None,
+        edge_label_factors: Optional[Mapping[str, Mapping[str, str]]] = None,
         device: str = "cpu",
     ):
         """
@@ -398,6 +468,13 @@ class WordLinguaInference:
             raise ValueError("id2node_type must be provided by the loaded model vocabulary")
         self.id2node_type = id2node_type
         self.node_type2id = {v: k for k, v in id2node_type.items()}
+        self.edge_factor_vocabs = edge_factor_vocabs or {}
+        self.edge_label_factors = edge_label_factors or {}
+        self.edge_factor_targets_by_label = build_edge_factor_targets_for_labels(
+            id2label=id2label,
+            edge_factor_vocabs=self.edge_factor_vocabs,
+            edge_label_factors=self.edge_label_factors,
+        )
         self.device = device
         
         # Move model to device
@@ -519,6 +596,20 @@ class WordLinguaInference:
             if expected_label2id != label2id:
                 logger.warning("label2id.json differs from config edge_types; using label2id.json for compatibility")
 
+        edge_factor_vocabs = model_config.get("edge_factor_vocabs")
+        if edge_factor_vocabs is None:
+            edge_factor_vocabs_path = os.path.join(model_dir, "edge_factor_vocabs.json")
+            if os.path.exists(edge_factor_vocabs_path):
+                with open(edge_factor_vocabs_path, "r", encoding="utf-8") as f:
+                    edge_factor_vocabs = json.load(f)
+
+        edge_label_factors = model_config.get("edge_label_factors")
+        if edge_label_factors is None:
+            edge_label_factors_path = os.path.join(model_dir, "edge_label_factors.json")
+            if os.path.exists(edge_label_factors_path):
+                with open(edge_label_factors_path, "r", encoding="utf-8") as f:
+                    edge_label_factors = json.load(f)
+
         # Load weights before constructing the model.
         weights_path = os.path.join(model_dir, "pytorch_model.bin")
         if not os.path.exists(weights_path):
@@ -566,6 +657,7 @@ class WordLinguaInference:
                 lam_sibling_prob=config.lam_sibling_prob,
                 lam_pos_prob=config.lam_pos_prob,
                 lam_parent_given_child_prob=config.lam_parent_given_child_prob,
+                edge_factor_decode_weight=config.edge_factor_decode_weight,
                 debug=config.debug,
                 debug_dir=config.debug_dir,
             )
@@ -588,6 +680,7 @@ class WordLinguaInference:
         model = WordLinguaParserV2(
             edge_types=model_edge_types,
             node_types=node_types,
+            edge_factor_vocabs=edge_factor_vocabs,
             arc_hidden_size=inference_config.arc_hidden_size,
             rel_hidden_size=inference_config.rel_hidden_size,
             node_hidden_size=inference_config.node_hidden_size,
@@ -616,6 +709,8 @@ class WordLinguaInference:
             config=inference_config,
             statistics=statistics,
             id2node_type=id2node_type,
+            edge_factor_vocabs=edge_factor_vocabs,
+            edge_label_factors=edge_label_factors,
             device=device,
         )
     
@@ -682,7 +777,17 @@ class WordLinguaInference:
         
         # Extract logits
         arc_logits = out["arc_logits"][0, :num_nodes, :num_nodes].float().cpu().numpy()
-        rel_logits = out["rel_logits"][0, :num_nodes, :num_nodes, :].float().cpu().numpy()
+        rel_logits_t = out["rel_logits"][0, :num_nodes, :num_nodes, :].float()
+        edge_factor_logits_t = {
+            name: logits[0, :num_nodes, :num_nodes, :].float()
+            for name, logits in (out.get("edge_factor_logits") or {}).items()
+        }
+        rel_logits = combine_rel_logits_with_edge_factor_logits(
+            rel_logits=rel_logits_t,
+            edge_factor_logits=edge_factor_logits_t,
+            edge_factor_targets_by_label=self.edge_factor_targets_by_label,
+            weight=self.config.edge_factor_decode_weight,
+        ).cpu().numpy()
         node_type_logits = out["node_type_logits"][0, :num_nodes, :].float().cpu().numpy()
         cow_logits = out["child_of_whether_logits"][0, :num_nodes, :].float().cpu().numpy()
         is_root_logits = out["is_root_logits"][0, :num_nodes, :].float().cpu().numpy()
@@ -838,7 +943,17 @@ class WordLinguaInference:
                 
                 # Extract logits for this example
                 arc_logits = out["arc_logits"][b_idx, :num_nodes, :num_nodes].float().cpu().numpy()
-                rel_logits = out["rel_logits"][b_idx, :num_nodes, :num_nodes, :].float().cpu().numpy()
+                rel_logits_t = out["rel_logits"][b_idx, :num_nodes, :num_nodes, :].float()
+                edge_factor_logits_t = {
+                    name: logits[b_idx, :num_nodes, :num_nodes, :].float()
+                    for name, logits in (out.get("edge_factor_logits") or {}).items()
+                }
+                rel_logits = combine_rel_logits_with_edge_factor_logits(
+                    rel_logits=rel_logits_t,
+                    edge_factor_logits=edge_factor_logits_t,
+                    edge_factor_targets_by_label=self.edge_factor_targets_by_label,
+                    weight=self.config.edge_factor_decode_weight,
+                ).cpu().numpy()
                 node_type_logits = out["node_type_logits"][b_idx, :num_nodes, :].float().cpu().numpy()
                 cow_logits = out["child_of_whether_logits"][b_idx, :num_nodes, :].float().cpu().numpy()
                 is_root_logits = out["is_root_logits"][b_idx, :num_nodes, :].float().cpu().numpy()

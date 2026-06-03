@@ -150,6 +150,8 @@ def main():
                        help="Weight for POS probability constraint")
     parser.add_argument("--lam_parent_given_child_prob", type=float, default=1.0,
                        help="Weight for parent given child probability constraint")
+    parser.add_argument("--edge_factor_decode_weight", type=float, default=0.0,
+                       help="Weight for factorized edge-label evidence during legal-label decoding")
     
     # Evaluation arguments
     parser.add_argument("--edge_match", type=str, default="exact",
@@ -201,6 +203,7 @@ def main():
         lam_sibling_prob=args.lam_sibling_prob,
         lam_pos_prob=args.lam_pos_prob,
         lam_parent_given_child_prob=args.lam_parent_given_child_prob,
+        edge_factor_decode_weight=args.edge_factor_decode_weight,
         debug=args.debug,
         debug_dir=args.debug_dir,
     )
@@ -526,6 +529,7 @@ def main():
             "device": device,
             "max_length": args.max_length,
             "arc_threshold": args.arc_threshold,
+            "edge_factor_decode_weight": args.edge_factor_decode_weight,
             "edge_match": args.edge_match,
         },
     }

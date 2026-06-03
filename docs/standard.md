@@ -653,6 +653,8 @@ Modification
   body -> relative-clause predicate / functor / clause root
 ```
 
+`Ref.pred.arg.1` 和 `Ref.pred.arg.2` 必须指向各自参数的可恢复根，而不是参数内部的任意 leaf。若 antecedent 后有逗号、括号、引号等局部 close wrapper，且该 wrapper 只关闭 antecedent，则 `Ref.pred.arg.1` 可以指向该 punctuation wrapper，并通过 `DESC(arg1)` 恢复 antecedent。外层谓词、修饰、属性、同位、列表等结构如果选择的是“被相对从句限定后的整体 referent”，应把语义边指向 `Ref` 本身，而不是继续指向 `Ref.pred.arg.1` 的内部节点；只有从句内部谓词/关系词角色才直接连到 wh-word、relative adverb 或 clause root 等 `Ref` 内部成分。
+
 `who`、`which`、`whom`、`whose`、以及在从句中充当 subject/object 等论元的 relative `that` 不应直接作为 `Ref.pred.arg.2`；它们应作为 relative-clause `Modification.variable`，从句谓词或 clause root 作为 `Modification.body`。这些显式关系词如果是从句内部论元，仍必须在从句谓词中占据对应 `pred.arg.*`；不得用 `Ref` 节点替代从句内部的 wh/that 论元。
 
 `when`、`where` 等 relative adverb 如果在从句中充当时间、地点、方式等状语成分，不应再额外创建 `Modification(variable=when/where, body=...)`。此时 `Ref.pred.arg.2` 直接指向该 relative adverb；relative adverb 必须是 `GeneralFunctor`，并用 `func.arg` 指向其引导的从句 root。这个 `func.arg` 结构已经表达了 relative adverb 与从句 root 的关系，从句 root 不应再以 `pred.arg.*`、`func.arg` 或其他子边反向指回该 relative adverb，否则会形成循环或重复角色。例如：
@@ -676,9 +678,10 @@ where/GeneralFunctor
 2. wh-word、关系从句 `that` 或其他显式指代成分如果是论元，应参与谓词论元结构。
 3. `who/which/whom/whose/that` 等显式关系词若在从句内部充当论元成分，必须进入 `Ref.pred.arg.2` 所指向的 `Modification.variable`，不能直接作为 `Ref.pred.arg.2`。
 4. 对论元型关系词，整个相对从句作为 `Ref.pred.arg.2` 的 `Modification`，该 `Ref` 作为被定语从句限定后的整体实体参与外层谓词或修饰结构。
-5. `when/where` 等 relative adverb 在从句中充当状语成分时，直接作为 `Ref.pred.arg.2`，并以 `func.arg` 指向从句 root；从句内部不得再用子边指回该 relative adverb。
-6. `that` 表达同位语从句且不在从句中充当成分时，不走 `Modification.variable=that`；该 `that` 本身是 lexical `AppositionalPredicator`。
-7. 零关系从句没有显式 wh-word / `that` / 指代词时，不应凭空添加 `Ref` 节点。此时应让 head entity 直接填补从句内部的隐含 gap；若 gap 无法由显式 head 或结构关系恢复，则保持缺省，不得添加 `Missing` node。
+5. 外层结构若语义上选择完整 relative referent，应连到 `Ref`；不得一边创建 `Ref`，一边让外层谓词或修饰继续连到 `Ref.pred.arg.1` 的内部 root/leaf。
+6. `when/where` 等 relative adverb 在从句中充当状语成分时，直接作为 `Ref.pred.arg.2`，并以 `func.arg` 指向从句 root；从句内部不得再用子边指回该 relative adverb。
+7. `that` 表达同位语从句且不在从句中充当成分时，不走 `Modification.variable=that`；该 `that` 本身是 lexical `AppositionalPredicator`。
+8. 零关系从句没有显式 wh-word / `that` / 指代词时，不应凭空添加 `Ref` 节点。此时应让 head entity 直接填补从句内部的隐含 gap；若 gap 无法由显式 head 或结构关系恢复，则保持缺省，不得添加 `Missing` node。
 
 零关系从句示例：
 
