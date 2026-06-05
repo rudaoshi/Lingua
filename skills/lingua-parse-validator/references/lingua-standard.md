@@ -452,7 +452,7 @@ Lingua 与 OIA 的重要区别是：Lingua 不应把复杂名词短语无条件�
 
 正确原则：
 
-1. 简单专名或不可分实体可作为单节点。
+1. 简单专名或不可分实体可作为单节点；多词专名、标题、代码和含有可恢复中心词的专名按 6.15.2 的 `Expression` / `Modification` 标准判定。
 2. 复杂实体应显式表示限定词、修饰语、中心词、介词短语、相对从句等。
 3. 嵌套实体应可通过 `SELF(v)` 或 `DESC(v)` 恢复。
 4. entity span 的边界必须准确。
@@ -1170,12 +1170,32 @@ Koichi Morita (army officer)
 
 表示规则：
 
-1. 多词专名若内部组合是 lexicalized name，推荐用 `ExpressionFunctor` / `Expression` 或一个 head `NominalConstant` 加可恢复的 name-part 结构表示；不得把名和姓误作 predicate-argument。
-2. 含有职称、角色、括号说明、地理限定或消歧义说明时，可用 `Attribute`、`Apposition`、`as:modification` 或 discourse metadata 表示其对核心实体的限定；选择取决于该说明是身份属性、同位描述、地理限定还是数据源消歧义。
-3. 逗号连接的地名/机构名如 `Jordan, New York`、`Beetham Tower, Manchester` 通常不是并列列表，而是 entity + location / qualifier；不能简单当作两个无关 list items，除非上下文确实表达列表。
-4. 表格/赛果/名单行中出现 `name ( country/team/role ) score`、`rank. name ( country ) result` 这类结构时，括号项是前一实体的限定属性，推荐 `Attribute(pred.arg.1=name, pred.arg.2=paren-wrapper)`；外层 `List` 应把这个 `Attribute` 作为一个 field，而不是把 `name` 与括号项拆成两个 sibling `func.arg`。只有括号项出现在行首、句内没有可恢复宿主，或括号内容是整行 note（如 `( halftime 2-0 )`、`( home team in CAPS )`）时，才不要强行挂到前一实体；整行 note 应包装整行结果或 header。
-5. 标题式短语如 `PHOTOS DONE WELL`、`Great Sandwiches, Great Prices` 可作为 title/list/expression；只有当上下文明确表达命题时，才解析为普通事实句。
-6. 如果专名或标题内部边界无法可靠判断，只要 token coverage 完整、root 可恢复整个名词性片段、没有添加未出现事实，可判为 acceptable variant 或 minor，不应直接判 major。
+核心区分：`Expression` 表示“这个名字 / 代码 / 标题作为一个表达式 unit 如何由表面部件组成”；`Modification` 表示“这个专名内部仍有可恢复的 head、type 和限定 scope”。判断点不是“它是不是专名”，而是“把内部部件拆开后是否能负责任地恢复 head-modifier 关系”。专名不是一律摊平成 `Expression`，但也不能为了拆开专名而把名、姓、型号片段、品牌词或官方组织名中的普通名词强行做成 predicate-argument / modifier。审查时按以下顺序判断：
+
+1. 先判定该片段是否只是一个 entity/title/name fragment。若缺少显式谓词，不得为了满足普通句子模板而补 `is`、`be named`、`means` 等事实谓词；root 只需通过 `DESC(root)` 恢复完整专名或标题。
+2. 再判定内部关系是“格式 / 身份组合”还是“head + qualifier”。若内部部件只是共同组成一个名字、代码、标题、缩写、官方名称或符号串，且没有可负责任恢复的中心词和修饰 scope，用 `ExpressionFunctor` / `Expression`。若内部有仍然承担类型/类别/中心词功能的 head，或地点、机构、人物、领域、等级等限定的 scope 可恢复，则用层次化 `Modification` / `as:modification`。
+3. 简单单词专名或不可分实体可以保持单个 `NominalConstant`，不必为了形式统一强行包成 `Expression`。多词但不透明的专名、标题、品牌、作品名、人名、组织名、型号、缩写等，可以作为一个 `Expression` unit。
+
+`Expression` 的典型使用：
+
+1. **人名和不透明名称**：`George Vukmanovich`、`Donna Sells`、`Marquis de Condorcet` 这类人名内部通常不是 head-modifier；名、姓、贵族小品词等只是共同组成姓名，应作为 `Expression` / name unit，而不是把 first name 标成 last name 的 `body`。
+2. **标题、品牌、口号、作品名和不透明官方名称**：`Great Sandwiches, Great Prices`、`PHOTOS DONE WELL`、`World Bank`、`World Hats Mart`、`Clean Ocean Action` 这类标题式或官方名称，如果上下文没有把它的内部词作为普通命题或可恢复 head-scope 使用，可作为 title/name expression；不要仅因其中含有 `Bank`、`Mart`、`Action` 等普通名词就强行拆成 `Modification`。
+3. **代码、型号、缩写、URL/email/path、化学/生物标记等符号串**：内部的 `/`、`.`、`@`、`?`、`=`、`&`、`#`、`+`、括号、hyphen 等若负责把两侧部件组合为一个格式表达，应以该 operator 为 `ExpressionFunctor` root，`func.arg` 指向左右部件或内层 expression。典型包括 `ATF-1`、`Epstein-Barr`、`NF-kappa`、URL/path/email、型号中的 slash/dot/hyphen。这个 operator 节点本身就是 expression root；不要额外再加一层只包住 operator 的无词面 `Expression` aux。
+4. **纯格式地名 / 地址 / 数字化名称**：当逗号、斜杠、点号只是地址或编号格式的一部分，并没有更具体的实体-限定关系需要表达时，可用 `ExpressionFunctor`。例如纯地址字段里的 `Houston, Texas` 可以按地址 expression 处理。
+
+`Modification` 的典型使用：
+
+1. **有可恢复中心词的专名**：若专名内部的 airport、school、university、hospital、river、mountain、province、department、district、league、final、promoter、virus 等仍承担普通名词中心词或类型词功能，应保留 head。中心词或已经带近层修饰的中心词作 `Modification.variable`；限定它的地名、机构名、人物名、领域名、等级名、类型名等作 `Modification.body` 或叶子 `as:modification` source。注意：词面像普通名词并不自动触发 `Modification`；若该词只是官方名称的一部分且没有可恢复 head-scope，则仍可用 `Expression`。
+2. **有远近亲疏的多层限定**：多个限定不是平行 token 时，应按 scope 分层。`Los Angeles International Airport` 不应四词平铺成一个无层级 `Expression`：可先让 `International` 近层限定 `Airport`，再让 `Los Angeles` 这个地点 name unit 限定 `International Airport`。`NF-kappa B` 也不应把 `NF`、`kappa`、`B` 一概打平：hyphen/format 先组成 `NF-kappa`，再由该内层 name expression 限定外层的 `B`。同理，`World Cup quarter-final` 应保留 `final/quarter-final` 与 `World Cup` 的层级，不能把所有词打平成一个 list/expression。
+3. **表达类型或所属领域的后项**：`Epstein-Barr virus` 中 `Epstein-Barr` 可先由 hyphen 构成 name expression，但 `virus` 是类型 head，整体应是 `Modification(variable=virus, body=Epstein-Barr-expression)`，而不是把 `virus` 也并入同一个无层级 expression。`Al-Anbar province`、`Mojave Airport`、`BamHI W promoter` 等也应优先检查是否有 recoverable head。
+4. **专名中的格式 operator 不排斥外层修饰**：hyphen、slash、dot 等可以在内层作为 `ExpressionFunctor`，但若整个 formatted name 再限定一个 head，应在外层用 `Modification`。也就是说，`Expression` 解决“部件如何组成名字片段”，`Modification` 解决“这个名字片段如何限定另一个 head”。
+
+边界和限定说明：
+
+1. 含有职称、角色、括号说明、地理限定或消歧义说明时，可用 `Attribute`、`Apposition`、`Modification` 或 discourse metadata 表示其对核心实体的限定；选择取决于该说明是身份属性、同位描述、地理限定、类型限定还是数据源消歧义。
+2. 逗号连接的地名/机构名如 `Jordan, New York`、`Beetham Tower, Manchester` 通常不是并列列表，而是 entity + location / qualifier；不能简单当作两个无关 list items。若该逗号只是地址格式 operator 且没有更具体的 head/qualifier 关系，可作为 `ExpressionFunctor`；若表达实体的地理限定，应保留限定关系。
+3. 表格/赛果/名单行中出现 `name ( country/team/role ) score`、`rank. name ( country ) result` 这类结构时，括号项是前一实体的限定属性，推荐 `Attribute(pred.arg.1=name, pred.arg.2=paren-wrapper)`；外层 `List` 应把这个 `Attribute` 作为一个 field，而不是把 `name` 与括号项拆成两个 sibling `func.arg`。只有括号项出现在行首、句内没有可恢复宿主，或括号内容是整行 note（如 `( halftime 2-0 )`、`( home team in CAPS )`）时，才不要强行挂到前一实体；整行 note 应包装整行结果或 header。
+4. 如果专名或标题内部边界无法可靠判断，只要 token coverage 完整、root 可恢复整个名词性片段、没有添加未出现事实，可判为 acceptable variant 或 minor，不应直接判 major。但当内部中心词和修饰层级清楚时，误打平成无层级 `Expression` 会丢失 head/scope，应判为 `EntityStructure` / `Modification` 问题；当内部只是姓名、代码或标题组成时，误拆成 `Modification` 同样是结构错误。
 
 判错：
 
@@ -1183,6 +1203,8 @@ Koichi Morita (army officer)
 |---|---|
 | 多词专名作为 `Expression` / entity fragment 可恢复 | 正确 |
 | 为专名/标题虚构普通事实谓词 | major |
+| 将有清楚中心词和修饰层级的专名无条件摊平成 `Expression` | minor / major |
+| 将人名、代码、标题等无 recoverable head 的内部部件强行标成 `Modification` | minor / major |
 | 把地理限定、括号消歧义、角色说明误作核心事实论元 | major |
 | 将 entity + qualifier 误作无关平行列表并丢失限定关系 | major |
 | 专名内部结构风格不同但整体 entity 可恢复 | minor / acceptable variant |
