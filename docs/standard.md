@@ -363,31 +363,45 @@ give/FactualPredicator
 
 在现有 JSONL serialization 中，谓词论元有时会指向 determiner、modifier、punctuation、`Modification`、`Expression`、`Ref` 等 wrapper node。若对应实体或事实可通过 `DESC(v)` 清晰恢复，这属于合法结构变体；只有 descendant subgraph 无法恢复核心论元时，才应判为 PFA 或语义错误。
 
-### 6.1.1 系词、`be + prep` 与 `there be`
+### 6.1.1 系词、`be + adjective`、`be + prep` 与 `there be`
 
 为减少历史数据中 copula 结构的合并/拆分不一致，以下结构按统一原则处理：
 
-1. **简单系表结构合并为谓词短语**。`is true`、`was interesting`、`are happy`、`be ready` 等简单 `be + adjective/state complement` 应作为一个 `FactualPredicator`。主语仍以 `pred.arg.1` 显式连接；该简单状态补语不再另作 `pred.arg.2`。例如：
+1. **系词和形容词/状态补语拆开**。`is true`、`was interesting`、`are happy`、`be ready`、`is 6 years old` 等 `be + adjective/state complement` 中，`be` 或 modal/aux + `be` 保持为 `FactualPredicator`，主语为 `pred.arg.1`，形容词或可恢复的复合状态补语作为 `pred.arg.2` 的 `ModificationalConstant`。例如：
 
 ```text
 it is true
 
-is true/FactualPredicator
+is/FactualPredicator
   pred.arg.1 -> it
+  pred.arg.2 -> true/ModificationalConstant
 ```
 
-2. **形容词/状态补语内部有副词修饰时，副词修饰必须可恢复**。若简单系表结构中出现修饰补语的副词，如 `very true`、`really interesting`、`fairly basic`、`so happy`，应避免把副词与形容词无结构地压成不可分析片段。推荐做法是将整个 `be + complement` 保持为事实谓词，同时拆出副词对形容词/状态核心的修饰，或用等价结构确保 `DESC` 可恢复副词 scope。例如：
+复合状态补语如果整体表示一个 adjectival unit，应保留为一个补语节点，例如：
+
+```text
+it is 6 years old
+
+is/FactualPredicator
+  pred.arg.1 -> it
+  pred.arg.2 -> 6 years old/ModificationalConstant
+```
+
+纯被动、进行或 lexical predicate 不按该规则拆分；`was indicted`、`are looking`、`has been approved` 等仍作为 `FactualPredicator` 谓词短语，除非上下文和词性明确表明后项是 adjectival/state complement。
+
+2. **副词、程度词和否定从谓词节点拆出，并保持 scope 可恢复**。`not`、`n't`、`nt`、分裂的 `n ' t`、普通 adverb/degree modifier 不应无结构地留在 `FactualPredicator` 内。它们应作为 `ModificationalConstant`，用 `as:modification` 修饰其真实 scope。对于 `be + adjective/state complement`，这些修饰通常外包在 `be` 谓词外层；补语本身仍在 `pred.arg.2`。例如：
 
 ```text
 that is fairly basic
 
-is basic/FactualPredicator
+is/FactualPredicator
   pred.arg.1 -> that
+  pred.arg.2 -> basic/ModificationalConstant
 fairly/ModificationalConstant
-  as:modification -> is basic
+  as:modification -> is
 ```
 
-若实现中将 `is fairly basic` 合并为一个 `FactualPredicator`，但无法恢复 `fairly` 修饰 `basic` 而非整个外层事实，应视为过度合并。
+若实现中将 `is fairly basic`、`is not available`、`will no longer have access` 等整段压成一个 `FactualPredicator`，导致 modifier/negation scope 不可恢复，应视为过度合并。
 
 3. **`be` 直接加介词谓词时合并**。若 `be` 与介词连续构成状态/位置/关系谓词，如 `is in`、`was at`、`is about`、`are against`、`be with`，应合并为一个 `FactualPredicator`，介词宾语作为该合并谓词的论元。例如：
 
@@ -401,7 +415,21 @@ is in/FactualPredicator
 
 若 `be` 后面的介词部分本身是后文清单中的复合介词 / 固定修饰引导词，如 `out of`、`due to`、`close to`、`consistent with`，优先按该固定短语整体建 `ModificationalFunctor`，不要把 `be + 固定短语` 整段压成不可拆的 `FactualPredicator`。
 
-4. **`be` 与介词之间有其他成分时，介词必须单独拆出**。若 `be` 和介词之间插入副词、程度词、否定、补语或其他成分，如 `is clearly in trouble`、`is not in Houston`、`was already at home`、`is all about this`，不得把整段无结构地合并为一个 predicate。应将 `be` 或可恢复的状态谓词作为主体，并将介词短语作为单独 `ModificationalFunctor`、`Modification` 或等价结构挂接，使插入成分和介词宾语的 scope 可恢复。
+4. **`be + scope modifier + PP` 中，modifier 修饰 PP relation，不修饰裸 `be`**。若 `be` 和介词之间插入副词、程度词、否定或 `no longer` 等 scope modifier，如 `is not in Houston`、`was already at home`、`is no longer in business`、`is all about this`，介词必须单独拆出为 `ModificationalFunctor`。该 PP relation 以 `variable -> be`、`body -> PP object` 表示；插入的 modifier 通过 `as:modification` 指向 PP relation 的 root。外层 parent 若选择整个被修饰的 PP predication，应指向 modifier root。例如：
+
+```text
+this location is no longer in business
+
+is/FactualPredicator
+  pred.arg.1 -> this location
+in/ModificationalFunctor
+  variable -> is
+  body -> business
+no longer/ModificationalConstant
+  as:modification -> in
+```
+
+这不同于普通 verbal/passive 结构：`were no longer expressed in monocytes` 中，`no longer` 修饰 `were expressed`，`in monocytes` 是该谓词的 PP adjunct，不应改成 `no longer -> in`。
 
 5. **`there be` 存在句拆分，`there` 作为 `pred.arg.1`**。`there is/are/was/were ...` 不应把 `there be` 合并为一个不可分析谓词。`be` 应作为 `FactualPredicator`，`there` 作为 `pred.arg.1`，存在物或其可恢复 descendant subgraph 作为 `pred.arg.2`。例如：
 
@@ -419,9 +447,10 @@ are/FactualPredicator
 
 | 错误 | 严重程度 |
 |---|---|
-| 简单系表结构被拆成 `be -> pred.arg.2 -> adjective`，且无其他结构需求 | minor / consistency error |
-| `is very true` 等把副词和补语压成不可恢复的单节点 | major |
+| `be + adjective/state complement` 被压成不可恢复的单个 predicate，导致补语或修饰 scope 不可恢复 | minor / major |
+| `is very true`、`is not available` 等把副词/否定和补语压成不可恢复的单节点 | major |
 | `be` 直接接介词谓词却拆成不必要 wrapper，导致关系谓词不清 | minor / major |
+| `be + modifier + PP` 中 modifier 挂到裸 `be`，或 PP 的 `variable` 指向 modifier 而非 `be`，导致 PP scope 错误 | major |
 | `be` 与介词之间有插入成分却整体合并，导致插入成分或 PP scope 不可恢复 | major |
 | `there be` 合并为不可分析谓词，未把 `there` 作为 `pred.arg.1` | major |
 
@@ -1753,7 +1782,7 @@ Return the evaluation JSON only.
 5. 所有 node type 和 edge label 必须合法或可规范化。
 6. 主事实谓词必须存在；但纯 structured fragment、标题、专名、field label、UI fragment 等无事实谓词样本按 fragment 规则处理，不得虚构事实谓词。
 7. 核心 predicate arguments 不得缺失；predicate node 原则上必须补足可由句内结构恢复的 `pred.arg.1`。若原句确实无对应成分、该谓词语义上不需要 `arg1`，或 subject-like participant 无法负责任恢复，不得添加 `Missing` node；field/key-value fragment 的缺失 host 也保持缺省。
-8. 简单系表结构应合并为 `be + adjective/state complement` 谓词；补语内部副词修饰必须拆出并保持 scope 可恢复。`be` 直接接介词谓词时合并；`be` 与介词之间有其他成分时介词必须拆出；`there be` 必须拆分并以 `there` 作 `pred.arg.1`。
+8. `be + adjective/state complement` 中 `be` 保持为 `FactualPredicator`，补语作为 `pred.arg.2`；副词、程度词和否定应拆成 `ModificationalConstant` 并保持 scope 可恢复。`be` 直接接介词谓词时合并；`be + scope modifier + PP` 中 modifier 应修饰 PP relation，PP 的 `variable` 指向 `be`；`there be` 必须拆分并以 `there` 作 `pred.arg.1`。
 9. 相对从句必须有内部谓词结构；显式 wh-word / `that` / 指代词存在时必须有 `ref/as:ref` 或等价 `Ref` 节点结构，零关系从句不得凭空添加 `Ref`。
 10. 属性结构必须明确区分 entity 与 value。
 11. 复杂修饰结构不得因过度压平而失去 head 和 scope。
