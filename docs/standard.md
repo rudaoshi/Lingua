@@ -387,6 +387,21 @@ is/FactualPredicator
   pred.arg.2 -> 6 years old/ModificationalConstant
 ```
 
+若 `be + adjective/state complement` 的补语内部存在同质并列，`be` 仍是顶层谓词，并列结构作为唯一 `pred.arg.2`。并列中的所有 adjective/state item 应保持平行 status，通常都是 `ModificationalConstant`，不得只因为是后续 conjunct 就升格为 `FactualPredicator`。例如：
+
+```text
+they are professional, neat and clean
+
+are/FactualPredicator
+  pred.arg.1 -> they
+  pred.arg.2 -> and/ConjunctionalFunctor
+
+and/ConjunctionalFunctor
+  func.arg -> professional/ModificationalConstant
+  func.arg -> neat/ModificationalConstant
+  func.arg -> clean/ModificationalConstant
+```
+
 纯被动、进行或 lexical predicate 不按该规则拆分；`was indicted`、`are looking`、`has been approved` 等仍作为 `FactualPredicator` 谓词短语，除非上下文和词性明确表明后项是 adjectival/state complement。
 
 2. **副词、程度词和否定从谓词节点拆出，并保持 scope 可恢复**。`not`、`n't`、`nt`、分裂的 `n ' t`、普通 adverb/degree modifier 不应无结构地留在 `FactualPredicator` 内。它们应作为 `ModificationalConstant`，用 `as:modification` 修饰其真实 scope。对于 `be + adjective/state complement`，这些修饰通常外包在 `be` 谓词外层；补语本身仍在 `pred.arg.2`。例如：
@@ -457,6 +472,22 @@ are/FactualPredicator
 `pred.arg.4` 与状语修饰必须区分：
 
 1. 若成分是谓词语义价的一部分，或表达宾补、结果状态、被谓词选择的非限定补足语，可作为 `pred.arg.4`。例如 `painted the wall red` 中 `red`、`elected him president` 中 `president`、`attempt to leave` 中 `to leave`。
+   对 `make/keep/leave/have + object + adjective/state complement` 这类宾语补语 / result-state 构式，matrix predicate 必须保留 object 为 `pred.arg.2`，并用 `pred.arg.4` 指向补语；补语本身通常是 `ModificationalConstant` 或可恢复的并列/修饰 subgraph，而不是另起一个以 object 为 `pred.arg.1` 的 `FactualPredicator`。例如：
+
+```text
+make this short
+
+make/FactualPredicator
+  pred.arg.2 -> this
+  pred.arg.4 -> short/ModificationalConstant
+
+leave soldiers dead
+
+leave/FactualPredicator
+  pred.arg.2 -> soldiers
+  pred.arg.4 -> dead/ModificationalConstant
+```
+
 2. 若成分回答目的、原因、时间、方式、条件等问题，且主谓宾事实在没有该成分时仍然完整，应建模为 `Modification`、介词/状语修饰，或在有明确逻辑关系时建模为 `LogicalPredicator`。
 3. 目的状语，尤其是可改写为 `in order to ...` 的不定式短语，不应作为主谓词的 `pred.arg.4`；它应作为修饰体修饰完整事件或相应事件子图。
 4. 若普通目的、时间、方式状语有显式引导词（如 `to`、`on`、`in`、`for`），优先用该 `to`/介词作为有 token anchor 的 `ModificationalFunctor`：`variable` 指向核心事件或已包装的核心事件，`body` 指向状语内容。不要为了这种有锚点的结构再额外包一层无 token 的 `Modification` aux。`in order to` 等固定引导短语应作为一个整体的 `ModificationalFunctor`。
@@ -783,8 +814,9 @@ Expression
 5. 当句面存在显式 expression operator 时，该 operator 节点本身就是这个 expression 的 root / functor。`,`、`:`、`-`、`/`、`.`、`@`、`?`、`=`、`&`、括号等若负责组合表达式部件，应标为 `ExpressionFunctor` 并直接以 `func.arg` 指向 operands；不要再额外创建 `spans: "Expression"` aux 只为了包住这个 operator。
 6. 一个 `ExpressionFunctor` 节点可以覆盖多个分隔符 token，共同表示一个 n-ary expression；`spans: "Expression"` aux 只在没有单一显式 operator，或需要组合多个已成形子表达式且句面没有可复用 functor 时使用。
 7. `spans: "Expression"` symbol node 不得只有一个 `func.arg`。只有一个成分时，外层关系应直接指向该成分或其 punctuation close wrapper。
-8. hyphenated compound / proper name / code / measure modifier，如 `paddle-steamer`、`Al-Anbar`、`99-tonne`、`one-week`、`NF-kappa`，其中 `-` 负责组合左右两项，应将 `-` 标为 `ExpressionFunctor`，以 `func.arg` 指向左右项，表达式整体再作为外层修饰体或实体部分参与结构。不得标成 `Modification(variable=右项, body=-/PunctuationalConstant)`，再用 `-.as:punctuation -> 左项` 来表示 compound。相反，标题、字段、话题或 discourse delimiter 中的 dash（如 `SOCCER - ...`、`P.S. - ...`）不是 compound operator，应按 punctuation close、`Discourse`、`Parataxis`、`Attribute` 或 `List` 等结构另行分析。
-9. 统计项 / value-label fragment，如 `42 - Number of nationalities...`、`49 - Percentage of Americans...`、`63 - Percentage of oil...`，前面的数字是 value，后面的 `Number/Percentage/...` 短语解释该数字的统计口径。这里的 dash 是格式分隔 operator，应标为 `ExpressionFunctor`：`dash.func.arg -> 数字`、`dash.func.arg -> 统计口径短语`。不得标为 `Apposition(pred.arg.1=数字-, pred.arg.2=统计口径)`，因为数字和统计口径短语并非同一 referent。除非句内另有明确 host / field 属性结构，否则也不要为了这类 fragment 添加 `Missing` host。
+8. hyphenated proper name / code / measure / format expression，如 `paddle-steamer`、`Al-Anbar`、`99-tonne`、`one-week`、`NF-kappa`，其中 `-` 只负责格式组合左右两项，应将 `-` 标为 `ExpressionFunctor`，以 `func.arg` 指向左右项，表达式整体再作为外层修饰体或实体部分参与结构。相反，标题、字段、话题或 discourse delimiter 中的 dash（如 `SOCCER - ...`、`P.S. - ...`）不是 compound operator，应按 punctuation close、`Discourse`、`Parataxis`、`Attribute` 或 `List` 等结构另行分析。
+9. `a-b` 中若 `a` 是形容词性 / 立场性 / 否定性前置修饰词，且语义是“`a-` 修饰 `b`”而不是纯格式组合，则不使用 `ExpressionFunctor` 表达 `a` 与 `b` 的关系。此时 `a` 应标为 `ModificationalConstant`，`-` 应标为 `PunctuationalConstant` 并 close `a`：`- --as:punctuation--> a`；再用内层 `Modification(variable=b, body=-)` 表示 `a-` 对 `b` 的修饰。若整个 `a-b` 继续修饰外层 head，应再用外层 `Modification(variable=head, body=inner Modification)` 表示整体修饰关系；不要让同一个 `Modification` 节点既有 `variable/body` 又发出 `as:modification`。典型例子包括 `non-nuclear Austria`、`pro-choice rally`、`anti-war demonstrations`、`anti-DNP antibodies`。
+10. 统计项 / value-label fragment，如 `42 - Number of nationalities...`、`49 - Percentage of Americans...`、`63 - Percentage of oil...`，前面的数字是 value，后面的 `Number/Percentage/...` 短语解释该数字的统计口径。这里的 dash 是格式分隔 operator，应标为 `ExpressionFunctor`：`dash.func.arg -> 数字`、`dash.func.arg -> 统计口径短语`。不得标为 `Apposition(pred.arg.1=数字-, pred.arg.2=统计口径)`，因为数字和统计口径短语并非同一 referent。除非句内另有明确 host / field 属性结构，否则也不要为了这类 fragment 添加 `Missing` host。
 
 ---
 

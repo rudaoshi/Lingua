@@ -378,6 +378,18 @@ class InferenceConfig:
     lam_pos_prob: float = 1.0
     lam_parent_given_child_prob: float = 1.0
     edge_factor_decode_weight: float = 0.0
+    enforce_connected: bool = False
+    enable_phase4_rewrites: bool = False
+    enforce_single_root: bool = True
+    decoder_mode: str = "ilp"
+    ilp_max_candidates_per_child: int = 16
+    ilp_max_labels_per_pair: int = 4
+    ilp_time_limit: float = 30.0
+    ilp_mip_rel_gap: float = 0.001
+    ilp_root_score_weight: float = 1.0
+    ilp_lazy_constraints: bool = True
+    ilp_max_lazy_rounds: int = 4
+    hybrid_fallback_policy: str = "conversion"
     
     # Debug config
     debug: bool = False
@@ -481,24 +493,46 @@ class WordLinguaInference:
         self.model.to(device)
         self.model.eval()
         
+        self.decoder_mode = str(config.decoder_mode or "hybrid")
+        if self.decoder_mode not in {"hybrid", "ilp", "sdp_graph"}:
+            raise ValueError(f"Unsupported decoder_mode: {self.decoder_mode}")
+        self.hybrid_fallback_policy = str(config.hybrid_fallback_policy or "conversion")
+        if self.hybrid_fallback_policy not in {"conversion", "issues"}:
+            raise ValueError(f"Unsupported hybrid_fallback_policy: {self.hybrid_fallback_policy}")
+
         # Lazy import to avoid circular dependencies
         from lingua.learn.wordgraph.decoding.graph_decoder import GreedyPatternDecoder
-        
-        # Initialize decoder
-        self.decoder = GreedyPatternDecoder(
-            stats=None,  # Legacy parameter, ignored
-            id2label=id2label,
-            label2id=label2id,
-            arc_threshold=config.arc_threshold,
-            edge_prob_tables=statistics,
-            lam_parent_prob=config.lam_parent_prob,
-            lam_sibling_prob=config.lam_sibling_prob,
-            lam_pos_prob=config.lam_pos_prob,
-            lam_parent_given_child_prob=config.lam_parent_given_child_prob,
-            id2node_type=self.id2node_type,
-            debug=config.debug,
-            debug_dir=config.debug_dir,
-        )
+
+        def _make_decoder(mode: str) -> GreedyPatternDecoder:
+            return GreedyPatternDecoder(
+                stats=None,  # Legacy parameter, ignored
+                id2label=id2label,
+                label2id=label2id,
+                arc_threshold=config.arc_threshold,
+                edge_prob_tables=statistics,
+                lam_parent_prob=config.lam_parent_prob,
+                lam_sibling_prob=config.lam_sibling_prob,
+                lam_pos_prob=config.lam_pos_prob,
+                lam_parent_given_child_prob=config.lam_parent_given_child_prob,
+                id2node_type=self.id2node_type,
+                debug=config.debug,
+                debug_dir=config.debug_dir,
+                enforce_connected=config.enforce_connected,
+                enable_phase4_rewrites=config.enable_phase4_rewrites,
+                enforce_single_root=config.enforce_single_root,
+                decoder_mode=mode,
+                ilp_max_candidates_per_child=config.ilp_max_candidates_per_child,
+                ilp_max_labels_per_pair=config.ilp_max_labels_per_pair,
+                ilp_time_limit=config.ilp_time_limit,
+                ilp_mip_rel_gap=config.ilp_mip_rel_gap,
+                ilp_root_score_weight=config.ilp_root_score_weight,
+                ilp_lazy_constraints=config.ilp_lazy_constraints,
+                ilp_max_lazy_rounds=config.ilp_max_lazy_rounds,
+            )
+
+        primary_mode = "sdp_graph" if self.decoder_mode == "hybrid" else self.decoder_mode
+        self.decoder = _make_decoder(primary_mode)
+        self.ilp_decoder = _make_decoder("ilp") if self.decoder_mode == "hybrid" else None
         
         self._example_counter = 0
 
@@ -507,14 +541,20 @@ class WordLinguaInference:
             return decoding_info
 
         keep_keys = {
+            "decoder_mode",
+            "decoder_options",
             "errors",
             "warnings",
             "forced_connections",
             "disconnected_nodes",
+            "phase3_skipped",
             "phase3_failures",
             "phase4_force_connects",
             "phase4_multihead_fixes",
+            "single_root_repair_skipped",
             "single_root_repairs",
+            "ilp",
+            "hybrid",
             "validation_errors",
             "has_issues",
         }
@@ -523,6 +563,121 @@ class WordLinguaInference:
             for key, value in decoding_info.items()
             if key in keep_keys and value
         }
+
+    def _set_debug_state(self, debug: Optional[bool]) -> None:
+        if debug is not None:
+            self.decoder.debug = debug
+            if self.ilp_decoder is not None:
+                self.ilp_decoder.debug = debug
+
+    def _convert_word_lingua_graph(self, word_lingua_graph: GPGraph) -> Tuple[Optional[GPGraph], Optional[str]]:
+        from lingua.learn.wordgraph.modeler.word2gp import wordlingua2lingua
+
+        try:
+            import copy
+            lingua_graph, _, _ = wordlingua2lingua(copy.deepcopy(word_lingua_graph))
+            return lingua_graph, None
+        except Exception as e:
+            return None, str(e)
+
+    def _decode_with_optional_ilp_fallback(
+        self,
+        *,
+        words: List[str],
+        arc_logits: np.ndarray,
+        rel_logits: np.ndarray,
+        node_type_preds: np.ndarray,
+        cow_preds: List[bool],
+        is_root_logits: Optional[np.ndarray],
+    ) -> Tuple[GPGraph, Optional[GPGraph], Optional[str], Dict[str, Any]]:
+        child_of_whether = np.array([int(c) for c in cow_preds])
+
+        fast_graph, fast_info = self.decoder.decode(
+            words=words,
+            arc_logits=arc_logits,
+            rel_logits=rel_logits,
+            node_type_preds=node_type_preds,
+            child_of_whether_preds=child_of_whether,
+            is_root_logits=is_root_logits,
+        )
+        fast_lingua_graph, fast_conversion_error = self._convert_word_lingua_graph(fast_graph)
+
+        if self.decoder_mode != "hybrid":
+            return fast_graph, fast_lingua_graph, fast_conversion_error, fast_info
+
+        fallback_reason = None
+        if fast_conversion_error:
+            fallback_reason = "conversion_error"
+        elif fast_info.get("validation_errors"):
+            fallback_reason = "validation_errors"
+        elif self.hybrid_fallback_policy == "issues" and fast_info.get("has_issues"):
+            fallback_reason = "decoder_issues"
+
+        hybrid_info = {
+            "primary_decoder_mode": "sdp_graph",
+            "fallback_decoder_mode": "ilp",
+            "fallback_policy": self.hybrid_fallback_policy,
+            "fallback_used": False,
+            "fallback_reason": fallback_reason,
+            "accepted_decoder_mode": "sdp_graph",
+            "primary_conversion_error": fast_conversion_error,
+        }
+
+        if fallback_reason and self.ilp_decoder is not None:
+            ilp_graph, ilp_info = self.ilp_decoder.decode(
+                words=words,
+                arc_logits=arc_logits,
+                rel_logits=rel_logits,
+                node_type_preds=node_type_preds,
+                child_of_whether_preds=child_of_whether,
+                is_root_logits=is_root_logits,
+            )
+            ilp_lingua_graph, ilp_conversion_error = self._convert_word_lingua_graph(ilp_graph)
+
+            hybrid_info.update({
+                "fallback_used": True,
+                "accepted_decoder_mode": "ilp",
+                "fallback_conversion_error": ilp_conversion_error,
+            })
+            if self.config.debug:
+                hybrid_info["primary_decoding_info"] = fast_info
+                hybrid_info["fallback_decoding_info"] = ilp_info
+
+            final_info = dict(ilp_info)
+            final_info["decoder_mode"] = "hybrid"
+            final_info["hybrid"] = hybrid_info
+            return ilp_graph, ilp_lingua_graph, ilp_conversion_error, final_info
+
+        final_info = dict(fast_info)
+        final_info["decoder_mode"] = "hybrid"
+        final_info["hybrid"] = hybrid_info
+        return fast_graph, fast_lingua_graph, fast_conversion_error, final_info
+
+    @staticmethod
+    def _extract_edges_and_apply_child_flags(
+        word_lingua_graph: GPGraph,
+        cow_preds: List[bool],
+    ) -> List[Tuple[int, int, str]]:
+        edges: List[Tuple[int, int, str]] = []
+        node_id_to_idx = {}
+        for node in word_lingua_graph.nodes():
+            if hasattr(node, "spans") and node.spans:
+                span = node.spans[0]
+                idx = span[0] if isinstance(span, (tuple, list)) else span
+                node_id_to_idx[node.ID] = idx
+
+        for parent, edge, child in word_lingua_graph.edges():
+            p_idx = node_id_to_idx.get(parent.ID)
+            c_idx = node_id_to_idx.get(child.ID)
+            if p_idx is not None and c_idx is not None:
+                edges.append((p_idx, c_idx, edge.label))
+
+        for node in word_lingua_graph.nodes():
+            idx = node_id_to_idx.get(node.ID)
+            if idx is not None and idx < len(cow_preds) and cow_preds[idx]:
+                node.child_of_whether = True
+
+        return edges
     
     @classmethod
     def from_pretrained(
@@ -658,6 +813,18 @@ class WordLinguaInference:
                 lam_pos_prob=config.lam_pos_prob,
                 lam_parent_given_child_prob=config.lam_parent_given_child_prob,
                 edge_factor_decode_weight=config.edge_factor_decode_weight,
+                enforce_connected=config.enforce_connected,
+                enable_phase4_rewrites=config.enable_phase4_rewrites,
+                enforce_single_root=config.enforce_single_root,
+                decoder_mode=config.decoder_mode,
+                ilp_max_candidates_per_child=config.ilp_max_candidates_per_child,
+                ilp_max_labels_per_pair=config.ilp_max_labels_per_pair,
+                ilp_time_limit=config.ilp_time_limit,
+                ilp_mip_rel_gap=config.ilp_mip_rel_gap,
+                ilp_root_score_weight=config.ilp_root_score_weight,
+                ilp_lazy_constraints=config.ilp_lazy_constraints,
+                ilp_max_lazy_rounds=config.ilp_max_lazy_rounds,
+                hybrid_fallback_policy=config.hybrid_fallback_policy,
                 debug=config.debug,
                 debug_dir=config.debug_dir,
             )
@@ -744,7 +911,6 @@ class WordLinguaInference:
         Returns:
             InferenceResult containing the parsed graphs and metadata
         """
-        from lingua.learn.wordgraph.modeler.word2gp import wordlingua2lingua
         from lingua.utils.segement import segment
         
         # Tokenize if needed
@@ -759,11 +925,12 @@ class WordLinguaInference:
             raise ValueError("Empty input sentence")
         
         # Update debug settings
-        if debug is not None:
-            self.decoder.debug = debug
+        self._set_debug_state(debug)
         
         self._example_counter += 1
         self.decoder.debug_example_id = self._example_counter
+        if self.ilp_decoder is not None:
+            self.ilp_decoder.debug_example_id = self._example_counter
         
         if self.config.debug:
             logger.info(f"Parsing sentence {self._example_counter}: {sentence_str[:100]}...")
@@ -796,47 +963,15 @@ class WordLinguaInference:
         node_type_preds = np.array([int(np.argmax(node_type_logits[i])) for i in range(num_nodes)])
         cow_preds = [bool(np.argmax(cow_logits[i]) == 1) for i in range(num_nodes)]
         
-        # Decode
-        word_lingua_graph, decoding_info = self.decoder.decode(
+        word_lingua_graph, lingua_graph, conversion_error, decoding_info = self._decode_with_optional_ilp_fallback(
             words=words,
             arc_logits=arc_logits,
             rel_logits=rel_logits,
             node_type_preds=node_type_preds,
-            child_of_whether_preds=np.array([int(c) for c in cow_preds]),
+            cow_preds=cow_preds,
             is_root_logits=is_root_logits,
         )
-        
-        # Extract edges from decoded graph
-        edges = []
-        node_id_to_idx = {}
-        for node in word_lingua_graph.nodes():
-            if hasattr(node, 'spans') and node.spans:
-                span = node.spans[0]
-                idx = span[0] if isinstance(span, (tuple, list)) else span
-                node_id_to_idx[node.ID] = idx
-        
-        for parent, edge, child in word_lingua_graph.edges():
-            p_idx = node_id_to_idx.get(parent.ID)
-            c_idx = node_id_to_idx.get(child.ID)
-            if p_idx is not None and c_idx is not None:
-                edges.append((p_idx, c_idx, edge.label))
-        
-        # Set child_of_whether attribute
-        for node in word_lingua_graph.nodes():
-            idx = node_id_to_idx.get(node.ID)
-            if idx is not None and idx < len(cow_preds) and cow_preds[idx]:
-                node.child_of_whether = True
-        
-        # Convert to lingua graph (deepcopy to preserve word_lingua_graph)
-        lingua_graph = None
-        conversion_error = None
-        try:
-            import copy
-            lingua_graph, _, _ = wordlingua2lingua(copy.deepcopy(word_lingua_graph))
-        except Exception as e:
-            conversion_error = str(e)
-            if self.config.debug:
-                logger.warning(f"Word-lingua to lingua conversion failed: {e}")
+        edges = self._extract_edges_and_apply_child_flags(word_lingua_graph, cow_preds)
         
         return InferenceResult(
             sentence=sentence_str,
@@ -868,15 +1003,13 @@ class WordLinguaInference:
         Returns:
             List of InferenceResult for each sentence
         """
-        from lingua.learn.wordgraph.modeler.word2gp import wordlingua2lingua
         from lingua.utils.segement import segment
         
         if not sentences:
             return []
         
         # Update debug settings
-        if debug is not None:
-            self.decoder.debug = debug
+        self._set_debug_state(debug)
         
         # Step 1: Tokenize all sentences
         batch_words: List[List[str]] = []
@@ -938,6 +1071,8 @@ class WordLinguaInference:
             try:
                 self._example_counter += 1
                 self.decoder.debug_example_id = self._example_counter
+                if self.ilp_decoder is not None:
+                    self.ilp_decoder.debug_example_id = self._example_counter
                 
                 num_nodes = int(encoded["num_nodes"][b_idx].item())
                 
@@ -962,47 +1097,15 @@ class WordLinguaInference:
                 node_type_preds = np.array([int(np.argmax(node_type_logits[i])) for i in range(num_nodes)])
                 cow_preds = [bool(np.argmax(cow_logits[i]) == 1) for i in range(num_nodes)]
                 
-                # Decode
-                word_lingua_graph, decoding_info = self.decoder.decode(
+                word_lingua_graph, lingua_graph, conversion_error, decoding_info = self._decode_with_optional_ilp_fallback(
                     words=words,
                     arc_logits=arc_logits,
                     rel_logits=rel_logits,
                     node_type_preds=node_type_preds,
-                    child_of_whether_preds=np.array([int(c) for c in cow_preds]),
+                    cow_preds=cow_preds,
                     is_root_logits=is_root_logits,
                 )
-                
-                # Extract edges from decoded graph
-                edges = []
-                node_id_to_idx = {}
-                for node in word_lingua_graph.nodes():
-                    if hasattr(node, 'spans') and node.spans:
-                        span = node.spans[0]
-                        idx = span[0] if isinstance(span, (tuple, list)) else span
-                        node_id_to_idx[node.ID] = idx
-                
-                for parent, edge, child in word_lingua_graph.edges():
-                    p_idx = node_id_to_idx.get(parent.ID)
-                    c_idx = node_id_to_idx.get(child.ID)
-                    if p_idx is not None and c_idx is not None:
-                        edges.append((p_idx, c_idx, edge.label))
-                
-                # Set child_of_whether attribute
-                for node in word_lingua_graph.nodes():
-                    idx = node_id_to_idx.get(node.ID)
-                    if idx is not None and idx < len(cow_preds) and cow_preds[idx]:
-                        node.child_of_whether = True
-                
-                # Convert to lingua graph (deepcopy to preserve word_lingua_graph)
-                lingua_graph = None
-                conversion_error = None
-                try:
-                    import copy
-                    lingua_graph, _, _ = wordlingua2lingua(copy.deepcopy(word_lingua_graph))
-                except Exception as e:
-                    conversion_error = str(e)
-                    if self.config.debug:
-                        logger.warning(f"Word-lingua to lingua conversion failed: {e}")
+                edges = self._extract_edges_and_apply_child_flags(word_lingua_graph, cow_preds)
                 
                 batch_results.append(InferenceResult(
                     sentence=sentence_str,
@@ -1059,6 +1162,10 @@ def main():
     parser.add_argument("--input", type=str, default=None, help="Input sentence")
     parser.add_argument("--input-file", type=str, default=None, help="JSONL file with sentences")
     parser.add_argument("--output", type=str, default=None, help="Output JSONL file")
+    parser.add_argument("--decoder-mode", type=str, default="ilp", choices=["hybrid", "ilp", "sdp_graph"], help="Decoder backend")
+    parser.add_argument("--hybrid-fallback-policy", type=str, default="conversion", choices=["conversion", "issues"], help="Hybrid fallback trigger")
+    parser.add_argument("--no-ilp-lazy-constraints", action="store_true", help="Disable lazy ILP high-order cuts")
+    parser.add_argument("--ilp-max-lazy-rounds", type=int, default=4, help="Maximum lazy-cut rounds before eager fallback")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--debug-dir", type=str, default=None, help="Directory for debug outputs")
     
@@ -1066,6 +1173,10 @@ def main():
     
     # Create config
     config = InferenceConfig(
+        decoder_mode=args.decoder_mode,
+        hybrid_fallback_policy=args.hybrid_fallback_policy,
+        ilp_lazy_constraints=not args.no_ilp_lazy_constraints,
+        ilp_max_lazy_rounds=args.ilp_max_lazy_rounds,
         debug=args.debug,
         debug_dir=args.debug_dir,
     )

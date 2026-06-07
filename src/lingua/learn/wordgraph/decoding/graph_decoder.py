@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import numpy as np
 import os
 from collections import defaultdict
@@ -15,17 +15,27 @@ logger = logging.getLogger(__name__)
 
 class GreedyPatternDecoder:
     """
-    Bottom-up greedy decoder that constructs the graph edge-by-edge.
-    
+    SDP-style graph decoder that constructs a scored subgraph edge-by-edge.
+
     Strategy:
-    1. Select edges with p(edge) > threshold
-    2. For each candidate edge, compute score = p(edge) * p(label) * p(pattern)
-    3. Greedily select highest-scoring edge that doesn't violate pattern constraints
-    4. After selecting an edge, update pattern constraints for affected nodes
-    5. Connect disconnected components to the root component
-    
-    This avoids cascading errors from top-down approaches.
+    1. Select candidate edges with p(edge) > threshold.
+    2. Score each candidate as p(edge) * p(label), optionally reweighted by local
+       statistics.
+    3. Greedily select the highest-scoring edge that does not violate local graph
+       constraints.
+
+    By default this decoder keeps the word-lingua single-root DAG contract by
+    adding best-scored root attachments, but it does not rewrite/move existing
+    semantic edges. This keeps high-confidence model edges as the primary object
+    while avoiding the old Phase 4 failure mode where a good edge was moved to a
+    low-confidence alternative.
     """
+
+    # Keep repair-time hierarchy hints on the same probability footing as real
+    # model-selected edges: both pieces and their joint confidence must be high.
+    MIN_LABEL_PROB = 0.01
+    MIN_HIERARCHY_HINT_CONFIDENCE = 0.5
+    HIERARCHY_HINT_EDGES = {"@upper", "@lower"}
     
     def __init__(self, stats: Any, id2label: Dict[int, str],
                  label2id: Dict[str, int], arc_threshold: float = 0.5,
@@ -37,7 +47,19 @@ class GreedyPatternDecoder:
                  id2node_type: Optional[Dict[int, str]] = None,
                  debug: bool = False,
                  debug_dir: Optional[str] = None,
-                 debug_example_id: Optional[int] = None):
+                 debug_example_id: Optional[int] = None,
+                 enforce_connected: bool = False,
+                 enable_phase4_rewrites: bool = False,
+                 enforce_single_root: bool = True,
+                 decoder_mode: str = "ilp",
+                 ilp_max_candidates_per_child: int = 16,
+                 ilp_max_labels_per_pair: int = 4,
+                 ilp_time_limit: float = 30.0,
+                 ilp_mip_rel_gap: float = 0.001,
+                 ilp_root_score_weight: float = 1.0,
+                 ilp_max_triangle_constraints: int = 200000,
+                 ilp_lazy_constraints: bool = True,
+                 ilp_max_lazy_rounds: int = 4):
         # NOTE: legacy `edge_pattern_stats.json` is no longer used. `stats` is kept only
         # for backward compatibility and is ignored.
         self.stats = None
@@ -56,6 +78,20 @@ class GreedyPatternDecoder:
         self.debug_dir = debug_dir
         self.debug_example_id = debug_example_id
         self.debug_step_counter = 0
+        self.enforce_connected = bool(enforce_connected)
+        self.enable_phase4_rewrites = bool(enable_phase4_rewrites)
+        self.enforce_single_root = bool(enforce_single_root)
+        self.decoder_mode = str(decoder_mode or "ilp")
+        if self.decoder_mode not in {"ilp", "sdp_graph"}:
+            raise ValueError(f"Unsupported decoder_mode: {self.decoder_mode}")
+        self.ilp_max_candidates_per_child = int(ilp_max_candidates_per_child)
+        self.ilp_max_labels_per_pair = int(ilp_max_labels_per_pair)
+        self.ilp_time_limit = float(ilp_time_limit)
+        self.ilp_mip_rel_gap = float(ilp_mip_rel_gap)
+        self.ilp_root_score_weight = float(ilp_root_score_weight)
+        self.ilp_max_triangle_constraints = int(ilp_max_triangle_constraints)
+        self.ilp_lazy_constraints = bool(ilp_lazy_constraints)
+        self.ilp_max_lazy_rounds = int(ilp_max_lazy_rounds)
     
     def _debug_visualize_step(self, graph: GPGraph, phase: str, step_desc: str, 
                               arc_probs: Optional[np.ndarray] = None,
@@ -230,6 +266,19 @@ class GreedyPatternDecoder:
         
         # Track decoding issues
         decoding_info = {
+            "decoder_mode": self.decoder_mode,
+            "decoder_options": {
+                "enforce_connected": bool(self.enforce_connected),
+                "enable_phase4_rewrites": bool(self.enable_phase4_rewrites),
+                "enforce_single_root": bool(self.enforce_single_root),
+                "ilp_max_candidates_per_child": int(self.ilp_max_candidates_per_child),
+                "ilp_max_labels_per_pair": int(self.ilp_max_labels_per_pair),
+                "ilp_time_limit": float(self.ilp_time_limit),
+                "ilp_mip_rel_gap": float(self.ilp_mip_rel_gap),
+                "ilp_root_score_weight": float(self.ilp_root_score_weight),
+                "ilp_lazy_constraints": bool(self.ilp_lazy_constraints),
+                "ilp_max_lazy_rounds": int(self.ilp_max_lazy_rounds),
+            },
             "errors": [],
             "warnings": [],
             "forced_connections": [],
@@ -253,6 +302,37 @@ class GreedyPatternDecoder:
         # Convert logits to probabilities
         arc_probs = self._sigmoid(arc_logits)
         rel_probs = self._softmax(rel_logits, axis=-1)
+
+        def _edge_model_probs(p_idx: int, c_idx: int, label: str) -> Tuple[float, float, float]:
+            p_idx = int(p_idx)
+            c_idx = int(c_idx)
+            arc_prob = float(arc_probs[p_idx, c_idx]) if (p_idx < arc_probs.shape[0] and c_idx < arc_probs.shape[1]) else 0.0
+            rel_prob = 0.0
+            if label in self.label2id:
+                lid = int(self.label2id[label])
+                if p_idx < rel_probs.shape[0] and c_idx < rel_probs.shape[1] and lid < rel_probs.shape[2]:
+                    rel_prob = float(rel_probs[p_idx, c_idx, lid])
+            return arc_prob, rel_prob, float(arc_prob * rel_prob)
+
+        def _hierarchy_hint_skip_reason(
+            p_idx: int,
+            c_idx: int,
+            label: str,
+            *,
+            arc_prob: Optional[float] = None,
+            rel_prob: Optional[float] = None,
+        ) -> Optional[str]:
+            if str(label) not in self.HIERARCHY_HINT_EDGES:
+                return None
+            if arc_prob is None or rel_prob is None:
+                arc_prob, rel_prob, _confidence = _edge_model_probs(p_idx, c_idx, label)
+            if float(arc_prob) < float(self.arc_threshold):
+                return "arc_prob_below_threshold"
+            if float(rel_prob) < self.MIN_LABEL_PROB:
+                return "rel_prob_below_threshold"
+            if float(arc_prob) * float(rel_prob) < self.MIN_HIERARCHY_HINT_CONFIDENCE:
+                return "confidence_below_threshold"
+            return None
 
         # Choose the real root word index (NO virtual ROOT node exists in the graph).
         # Prefer the model's is_root head when available; otherwise fall back to in-degree heuristic.
@@ -288,13 +368,26 @@ class GreedyPatternDecoder:
                 node.child_of_whether = True
             graph.add_node(node)
             word_to_node[i] = node
-        
+
         # Debug: visualize initial empty graph
         if self.debug:
             self._debug_visualize_step(
                 graph, "init", "empty_graph",
                 arc_probs=arc_probs, rel_probs=rel_probs,
                 label2id={v: k for k, v in self.label2id.items()}
+            )
+
+        if self.decoder_mode == "ilp":
+            return self._decode_ilp_single_root_dag(
+                words=words,
+                graph=graph,
+                word_to_node=word_to_node,
+                node_types=node_types,
+                arc_probs=arc_probs,
+                rel_probs=rel_probs,
+                root_idx=root_idx,
+                is_root_logits=is_root_logits,
+                decoding_info=decoding_info,
             )
         
         # Track outgoing edges for each node (for pattern constraint checking)
@@ -730,6 +823,16 @@ class GreedyPatternDecoder:
                 lbl = self.id2label.get(int(lid), "UNK")
                 if lbl == "UNK" or lbl not in self.label2id:
                     continue
+                rel_prob = float(rel_vec[lid])
+                skip_reason = _hierarchy_hint_skip_reason(p_idx, c_idx, lbl, rel_prob=rel_prob)
+                if skip_reason is not None:
+                    if debug_trace is not None and len(debug_trace) < int(max_trace):
+                        debug_trace.append({
+                            "label": str(lbl),
+                            "rel_prob": rel_prob,
+                            "validator_code": f"LOW_HIERARCHY_{skip_reason.upper()}",
+                        })
+                    continue
                 code = validator.validate(
                     p_idx, c_idx, lbl,
                     mode=mode,
@@ -739,11 +842,11 @@ class GreedyPatternDecoder:
                 if debug_trace is not None and len(debug_trace) < int(max_trace):
                     debug_trace.append({
                         "label": str(lbl),
-                        "rel_prob": float(rel_vec[lid]),
+                        "rel_prob": rel_prob,
                         "validator_code": str(code.name),
                     })
                 if code == EdgeValidationCode.OK:
-                    return lbl, float(rel_vec[lid])
+                    return lbl, rel_prob
             return None
 
         def _edge_score(p_idx: int, c_idx: int, lbl: str, arc_prob: float, rel_prob: float) -> float:
@@ -761,6 +864,14 @@ class GreedyPatternDecoder:
         all_nodes = set(range(num_words))
         main_component = weak_component(root_idx, all_nodes)
         remaining = all_nodes - main_component
+        if not self.enforce_connected:
+            if remaining:
+                decoding_info["phase3_skipped"] = {
+                    "reason": "sdp_graph_mode",
+                    "root_idx": int(root_idx),
+                    "disconnected_nodes": sorted(int(x) for x in remaining),
+                }
+            remaining = set()
 
         import heapq
         while remaining:
@@ -772,7 +883,8 @@ class GreedyPatternDecoder:
             best_score = -float("inf")
             # Debug: keep a compact trace of rejected candidates so we can explain failures
             phase3_dbg = None
-            fail_heap: List[Tuple[float, Dict[str, Any]]] = []
+            fail_heap: List[Tuple[float, int, Dict[str, Any]]] = []
+            fail_counter = 0
             if self.debug:
                 phase3_dbg = {
                     "component_nodes": sorted([int(x) for x in component]),
@@ -785,7 +897,7 @@ class GreedyPatternDecoder:
                 }
 
             def _consider_edge(p_idx: int, c_idx: int, *, mode: str, enforce_arc_threshold: bool):
-                nonlocal best, best_score
+                nonlocal best, best_score, fail_counter
                 if phase3_dbg is not None:
                     phase3_dbg["attempted_pairs"] += 1
                 arc_prob = float(arc_probs[p_idx, c_idx])
@@ -811,11 +923,12 @@ class GreedyPatternDecoder:
                         }
                         # keep only top-N failures to avoid exploding debug JSON/logs
                         max_keep = 25
+                        fail_counter += 1
                         if len(fail_heap) < max_keep:
-                            heapq.heappush(fail_heap, (fail_score, item))
+                            heapq.heappush(fail_heap, (fail_score, fail_counter, item))
                         else:
                             if fail_score > fail_heap[0][0]:
-                                heapq.heapreplace(fail_heap, (fail_score, item))
+                                heapq.heapreplace(fail_heap, (fail_score, fail_counter, item))
                     return
                 lbl, rel_prob = found
                 score = _edge_score(p_idx, c_idx, lbl, arc_prob, rel_prob)
@@ -853,7 +966,7 @@ class GreedyPatternDecoder:
                 if phase3_dbg is not None:
                     phase3_dbg["stop_message"] = msg
                     # sort failures by descending score
-                    phase3_dbg["top_failures"] = [x for _, x in sorted(fail_heap, key=lambda t: -t[0])]
+                    phase3_dbg["top_failures"] = [x for _, _counter, x in sorted(fail_heap, key=lambda t: -t[0])]
                     decoding_info["phase3_components"].append(phase3_dbg)
                 break
 
@@ -880,7 +993,7 @@ class GreedyPatternDecoder:
                 })
                 if phase3_dbg is not None:
                     phase3_dbg["stop_message"] = msg
-                    phase3_dbg["top_failures"] = [x for _, x in sorted(fail_heap, key=lambda t: -t[0])]
+                    phase3_dbg["top_failures"] = [x for _, _counter, x in sorted(fail_heap, key=lambda t: -t[0])]
                     decoding_info["phase3_components"].append(phase3_dbg)
                 break
 
@@ -917,7 +1030,7 @@ class GreedyPatternDecoder:
                     "rel_prob": float(rel_prob),
                     "score": float(score),
                 }
-                phase3_dbg["top_failures"] = [x for _, x in sorted(fail_heap, key=lambda t: -t[0])]
+                phase3_dbg["top_failures"] = [x for _, _counter, x in sorted(fail_heap, key=lambda t: -t[0])]
                 decoding_info["phase3_components"].append(phase3_dbg)
 
             # Debug: visualize after Phase 3 connection
@@ -1072,15 +1185,61 @@ class GreedyPatternDecoder:
                     })
                 return False
 
-            # Keep constraints conservative by default. The final single-root
-            # repair may intentionally relax non-topological constraints as a
-            # last resort, but it must still preserve DAG topology.
+            arc_prob, rel_prob, _confidence = _edge_model_probs(p_idx, c_idx, label)
+            skip_reason = (
+                None
+                if context == "phase4_rollback"
+                else _hierarchy_hint_skip_reason(p_idx, c_idx, label, arc_prob=arc_prob, rel_prob=rel_prob)
+            )
+            if skip_reason is not None:
+                if self.debug:
+                    decoding_info["phase4_add_edge_failures"].append({
+                        "parent": int(p_idx),
+                        "child": int(c_idx),
+                        "label": str(label),
+                        "reason": f"hierarchy hint {skip_reason}",
+                        "validator_code": None,
+                        "context": str(context),
+                        "arc_prob": float(arc_prob),
+                        "rel_prob": float(rel_prob),
+                        "meta": meta,
+                    })
+                decoding_info.setdefault("skipped_hierarchy_edges", []).append({
+                    "from": parent_node.ID,
+                    "to": child_node.ID,
+                    "from_word_idx": int(p_idx),
+                    "to_word_idx": int(c_idx),
+                    "label": str(label),
+                    "source": str(context),
+                    "reason": skip_reason,
+                    "arc_prob": float(arc_prob),
+                    "rel_prob": float(rel_prob),
+                    "confidence": float(arc_prob * rel_prob),
+                    "meta": meta or {},
+                })
+                return False
+
+            # Keep frame-arity constraints hard even when a final root repair is
+            # allowed to relax softer constraints. In particular, a predicator
+            # must not get duplicate pred.arg.x / variable / body edges.
             code = validator.validate(
                 p_idx, c_idx, label,
                 mode=validation_mode,
                 check_cycle=True,
                 check_pattern=check_pattern,
             )
+            if code == EdgeValidationCode.DUPLICATED_EDGE_LABELS:
+                if self.debug and context != "phase4_rollback":
+                    decoding_info["phase4_add_edge_failures"].append({
+                        "parent": int(p_idx),
+                        "child": int(c_idx),
+                        "label": str(label),
+                        "reason": "hard frame-arity constraint rejected",
+                        "validator_code": str(code.name),
+                        "context": str(context),
+                        "meta": meta,
+                    })
+                return False
             if code != EdgeValidationCode.OK and not allow_topology_only:
                 if self.debug and context != "phase4_rollback":
                     decoding_info["phase4_add_edge_failures"].append({
@@ -1106,12 +1265,6 @@ class GreedyPatternDecoder:
                     })
                 return False
 
-            arc_prob = float(arc_probs[p_idx, c_idx]) if (p_idx < arc_probs.shape[0] and c_idx < arc_probs.shape[1]) else 0.0
-            rel_prob = 0.0
-            if label in self.label2id:
-                lid = int(self.label2id[label])
-                if (p_idx < rel_probs.shape[0] and c_idx < rel_probs.shape[1] and lid < rel_probs.shape[2]):
-                    rel_prob = float(rel_probs[p_idx, c_idx, lid])
             score = _edge_score(p_idx, c_idx, label, arc_prob, rel_prob)
 
             gpg_edge = GPGEdge(label=label)
@@ -1140,6 +1293,63 @@ class GreedyPatternDecoder:
             })
             return True
 
+        def _add_hierarchy_hint_edge(
+            p_idx: int,
+            c_idx: int,
+            label: str,
+            *,
+            source: str,
+            case: Optional[int] = None,
+            meta: Optional[Dict[str, Any]] = None,
+        ) -> Optional[Dict[str, Any]]:
+            """Add @upper/@lower only when the model also supports the edge."""
+            p_idx = int(p_idx)
+            c_idx = int(c_idx)
+            label = str(label)
+            if label not in self.HIERARCHY_HINT_EDGES or label not in self.label2id:
+                return None
+            if graph.g.has_edge(word_to_node[p_idx].ID, word_to_node[c_idx].ID):
+                return None
+            arc_prob, rel_prob, confidence = _edge_model_probs(p_idx, c_idx, label)
+            skip_reason = _hierarchy_hint_skip_reason(p_idx, c_idx, label, arc_prob=arc_prob, rel_prob=rel_prob)
+            if skip_reason is None and would_create_cycle(p_idx, c_idx):
+                skip_reason = "would_create_cycle"
+
+            info = {
+                "from": word_to_node[p_idx].ID,
+                "to": word_to_node[c_idx].ID,
+                "from_word_idx": int(p_idx),
+                "to_word_idx": int(c_idx),
+                "label": label,
+                "source": source,
+                "case": case,
+                "arc_prob": float(arc_prob),
+                "rel_prob": float(rel_prob),
+                "confidence": float(confidence),
+                "meta": meta or {},
+            }
+            if skip_reason is not None:
+                info["reason"] = skip_reason
+                decoding_info.setdefault("skipped_hierarchy_edges", []).append(info)
+                return None
+
+            edge = GPGEdge(label=label)
+            edge.arc_prob = float(arc_prob)
+            edge.rel_prob = float(rel_prob)
+            edge.original_score = float(confidence)
+            edge.transformed_score = float(confidence)
+            edge.decoder_source = source
+            edge.postprocess = True
+            edge.postprocess_case = case
+            graph.add_edge(word_to_node[p_idx], word_to_node[c_idx], edge)
+
+            node_outgoing_edges[p_idx].append(label)
+            node_incoming_edges[c_idx].append(label)
+            children_of[p_idx].add(c_idx)
+            parents_of[c_idx].add(p_idx)
+            edge_labels_by_pair[(int(p_idx), int(c_idx))] = label
+            return info
+
         def _current_roots() -> List[int]:
             return [
                 i
@@ -1164,6 +1374,9 @@ class GreedyPatternDecoder:
                 lbl = self.id2label.get(int(lid), "UNK")
                 if lbl == "UNK" or lbl == "nonsense" or lbl not in self.label2id:
                     continue
+                rel_prob = float(rel_vec[lid])
+                if _hierarchy_hint_skip_reason(p_idx, c_idx, lbl, rel_prob=rel_prob) is not None:
+                    continue
                 code = validator.validate(
                     p_idx,
                     c_idx,
@@ -1173,9 +1386,11 @@ class GreedyPatternDecoder:
                     check_pattern=check_pattern_for_mode,
                 )
                 if code == EdgeValidationCode.OK:
-                    return lbl, float(rel_vec[lid]), "valid"
+                    return lbl, rel_prob, "valid"
+                if code == EdgeValidationCode.DUPLICATED_EDGE_LABELS:
+                    continue
                 if topology_only and not would_create_cycle(p_idx, c_idx):
-                    return lbl, float(rel_vec[lid]), f"topology_only:{code.name}"
+                    return lbl, rel_prob, f"topology_only:{code.name}"
             return None
 
         def _choose_primary_decoded_root(roots: List[int]) -> int:
@@ -1343,7 +1558,7 @@ class GreedyPatternDecoder:
             phase4_root_idx = predicted_root_idx
 
         # Detect heads (roots in the decoded graph) excluding R.
-        max_rounds = 3
+        max_rounds = 3 if self.enable_phase4_rewrites else 0
         round_idx = 0
         while round_idx < max_rounds:
             round_idx += 1
@@ -1427,9 +1642,11 @@ class GreedyPatternDecoder:
                     if removed_lbl is None:
                         continue
 
-                    # When moving an @ edge to H, if H already has @ children,
-                    # we need to add @lower edges to establish hierarchy.
-                    # The new @ parent (p_idx) should have @lower pointing to H's existing @ children.
+                    # When moving an @ edge to H, H's existing @ children may need
+                    # @lower hints from the moved parent. Collect these first, and
+                    # add them only after the move succeeds so failed rewrites do
+                    # not leak stray @lower edges.
+                    pending_lower_children: List[Tuple[int, str]] = []
                     if "@" in old_lbl:
                         for head_child in set(children_of.get(head_idx, set())):
                             head_child_node = word_to_node[head_child]
@@ -1437,20 +1654,8 @@ class GreedyPatternDecoder:
                             if edge is None:
                                 continue
                             edge_label = str(edge.label)
-                            # If head's child has @ edge, add @lower from p_idx to head_child
                             if edge_label.startswith("@") and edge_label in self.PRIMARY_AT_EDGES:
-                                # Add @lower edge from p_idx to head_child
-                                p_node = word_to_node[p_idx]
-                                if "@lower" in self.label2id and not graph.has_edge(p_node, head_child_node):
-                                    graph.add_edge(p_node, head_child_node, GPGEdge(label="@lower"))
-                                    node_outgoing_edges[p_idx].append("@lower")
-                                    node_incoming_edges[head_child].append("@lower")
-                                    
-                                    logger.debug(
-                                        f"Phase 4: Added @lower edge {p_idx}->{head_child} "
-                                        f"because parent {p_idx} is moving @ edge to head {head_idx} "
-                                        f"which already has @ child {head_child}"
-                                    )
+                                pending_lower_children.append((int(head_child), edge_label))
 
                     if not _add_edge(
                         p_idx,
@@ -1468,7 +1673,39 @@ class GreedyPatternDecoder:
                         # rollback: restore original edge if we couldn't add new one
                         _add_edge(p_idx, c_idx, old_lbl, context="phase4_rollback")
                         continue
-                    moved.append({"from_parent": p_idx, "old_child": c_idx, "new_child": head_idx, "label": old_lbl})
+
+                    added_lower_edges = []
+                    for head_child, edge_label in pending_lower_children:
+                        added_lower = _add_hierarchy_hint_edge(
+                            p_idx,
+                            head_child,
+                            "@lower",
+                            source="phase4_multihead",
+                            meta={
+                                "head": int(head_idx),
+                                "head_child_label": edge_label,
+                                "moved_label": old_lbl,
+                                "old_child": int(c_idx),
+                                "common_child": int(c_idx),
+                                "phase4_root": int(phase4_root_idx),
+                                "predicted_root": int(predicted_root_idx),
+                            },
+                        )
+                        if added_lower is not None:
+                            added_lower_edges.append(added_lower)
+                            logger.debug(
+                                f"Phase 4: Added @lower edge {p_idx}->{head_child} "
+                                f"because parent {p_idx} moved @ edge to head {head_idx} "
+                                f"which already has @ child {head_child}"
+                            )
+
+                    moved.append({
+                        "from_parent": p_idx,
+                        "old_child": c_idx,
+                        "new_child": head_idx,
+                        "label": old_lbl,
+                        "added_lower_edges": added_lower_edges,
+                    })
 
                 if moved:
                     any_change = True
@@ -1497,10 +1734,18 @@ class GreedyPatternDecoder:
             if not any_change:
                 break
 
-        # Phase 4b: enforce the decoder contract. Phase 3 guarantees weak
-        # connectivity only, and the Phase 4 common-child rewrite is heuristic;
-        # any remaining extra roots must get a model-scored incoming edge here.
-        _force_single_root()
+        # Phase 4b is disabled by default in SDP graph mode. Forcing a single
+        # root is tree-decoder behavior and can replace high-confidence semantic
+        # edges with low-confidence attachments.
+        if self.enforce_single_root:
+            _force_single_root()
+        else:
+            roots = _current_roots()
+            if len(roots) > 1:
+                decoding_info["single_root_repair_skipped"] = {
+                    "reason": "sdp_graph_mode",
+                    "roots": [int(r) for r in roots],
+                }
         
         # if unreachable:
         #     logger.debug(f"Phase 4: Connecting {len(unreachable)} disconnected nodes")
@@ -1717,7 +1962,13 @@ class GreedyPatternDecoder:
 
         # Phase 5: Add @upper and @lower edges as post-processing
         # These edges establish hierarchy relationships between @ children
-        self._add_upper_lower_edges(graph, word_to_node, node_outgoing_edges, decoding_info)
+        self._add_upper_lower_edges(
+            graph,
+            word_to_node,
+            node_outgoing_edges,
+            decoding_info,
+            add_hierarchy_hint_edge=_add_hierarchy_hint_edge,
+        )
         
         # Debug: visualize after Phase 5
         if self.debug:
@@ -1759,13 +2010,865 @@ class GreedyPatternDecoder:
             decoding_info["has_issues"] = True
 
         return graph, decoding_info
+
+    def _decode_ilp_single_root_dag(
+        self,
+        *,
+        words: List[str],
+        graph: GPGraph,
+        word_to_node: Dict[int, Any],
+        node_types: List[str],
+        arc_probs: np.ndarray,
+        rel_probs: np.ndarray,
+        root_idx: int,
+        is_root_logits: Optional[np.ndarray],
+        decoding_info: Dict[str, Any],
+    ) -> Tuple[GPGraph, Dict[str, Any]]:
+        """
+        Select a maximum-scoring legal word-lingua graph with a MILP backend.
+
+        The binary edge variables choose labeled edges. Root variables enforce
+        exactly one zero-indegree node, and continuous order variables enforce a
+        DAG through topological-order inequalities.
+        """
+        if not words:
+            decoding_info["ilp"] = {
+                "candidate_edges": 0,
+                "raw_candidate_edges": 0,
+                "constraints": 0,
+                "selected_edges": 0,
+                "selected_root": None,
+                "status": None,
+                "success": True,
+                "message": "empty graph",
+            }
+            decoding_info["has_issues"] = False
+            return graph, decoding_info
+
+        try:
+            from scipy.optimize import Bounds, LinearConstraint, milp
+            from scipy.sparse import coo_matrix
+        except Exception as e:
+            decoding_info["errors"].append(f"ILP decoder requires scipy.optimize.milp: {e}")
+            decoding_info["has_issues"] = True
+            return graph, decoding_info
+
+        num_words = len(words)
+        eps = 1e-9
+        frame_components = {"pred.arg.1", "pred.arg.2", "pred.arg.3", "pred.arg.4", "variable", "body"}
+        hierarchy_hint_at = {"@lower", "@upper"}
+        primary_aux_at = set(self.PRIMARY_AT_EDGES) | {"@whether_of"}
+        adjacent_only_types = {
+            "ModificationalConstant", "DeterminerConstant", "OtherConstant",
+            "NominalConstant", "SymbolConstant",
+        }
+        allowed_chain_at = {"@list", "@parataxis", "@expression"}
+
+        def _safe_log(x: float) -> float:
+            return float(np.log(max(float(x), eps)))
+
+        def _edge_components(label: str) -> Set[str]:
+            return set(str(label).split("+"))
+
+        def _is_punctuation_label(label: str) -> bool:
+            comps = _edge_components(label)
+            return "punctuation" in comps
+
+        def _is_modification_label(label: str) -> bool:
+            return str(label).startswith("@modification")
+
+        def _edge_model_probs(p_idx: int, c_idx: int, label: str) -> Tuple[float, float, float]:
+            p_idx = int(p_idx)
+            c_idx = int(c_idx)
+            arc_prob = float(arc_probs[p_idx, c_idx]) if (p_idx < arc_probs.shape[0] and c_idx < arc_probs.shape[1]) else 0.0
+            rel_prob = 0.0
+            if label in self.label2id:
+                lid = int(self.label2id[label])
+                if p_idx < rel_probs.shape[0] and c_idx < rel_probs.shape[1] and lid < rel_probs.shape[2]:
+                    rel_prob = float(rel_probs[p_idx, c_idx, lid])
+            return arc_prob, rel_prob, float(arc_prob * rel_prob)
+
+        def _hierarchy_hint_skip_reason(
+            p_idx: int,
+            c_idx: int,
+            label: str,
+            *,
+            arc_prob: Optional[float] = None,
+            rel_prob: Optional[float] = None,
+        ) -> Optional[str]:
+            if str(label) not in self.HIERARCHY_HINT_EDGES:
+                return None
+            if arc_prob is None or rel_prob is None:
+                arc_prob, rel_prob, _confidence = _edge_model_probs(p_idx, c_idx, label)
+            if float(arc_prob) < float(self.arc_threshold):
+                return "arc_prob_below_threshold"
+            if float(rel_prob) < self.MIN_LABEL_PROB:
+                return "rel_prob_below_threshold"
+            if float(arc_prob) * float(rel_prob) < self.MIN_HIERARCHY_HINT_CONFIDENCE:
+                return "confidence_below_threshold"
+            return None
+
+        root_scores = np.zeros(num_words, dtype=float)
+        if num_words > 0:
+            if (
+                is_root_logits is not None
+                and isinstance(is_root_logits, np.ndarray)
+                and is_root_logits.shape[0] >= num_words
+                and is_root_logits.shape[-1] >= 2
+            ):
+                r = is_root_logits[:num_words, :2].astype(np.float32)
+                root_scores = (r[:, 1] - r[:, 0]).astype(float)
+            elif 0 <= int(root_idx) < num_words:
+                root_scores[int(root_idx)] = 1.0
+
+        empty_outgoing = {i: [] for i in range(num_words)}
+        empty_incoming = {i: [] for i in range(num_words)}
+        empty_children = {i: set() for i in range(num_words)}
+        empty_parents = {i: set() for i in range(num_words)}
+        empty_validator = EdgeValidator(
+            root_idx=int(root_idx),
+            node_types=node_types,
+            node_incoming_edges=empty_incoming,
+            node_outgoing_edges=empty_outgoing,
+            children_of=empty_children,
+            parents_of=empty_parents,
+            edge_labels_by_pair={},
+            next_word_targets=set(),
+            adjacent_only_types=adjacent_only_types,
+            allowed_chain_at=allowed_chain_at,
+            would_create_cycle=lambda _p, _c: False,
+            pattern_check=None,
+        )
+
+        max_labels_per_pair = max(1, int(self.ilp_max_labels_per_pair))
+        max_candidates_per_child = max(1, int(self.ilp_max_candidates_per_child))
+        raw_by_child: Dict[int, List[Dict[str, Any]]] = {i: [] for i in range(num_words)}
+        static_reject_counts: Dict[str, int] = defaultdict(int)
+
+        for child_idx in range(num_words):
+            for parent_idx in range(num_words):
+                if parent_idx == child_idx:
+                    continue
+                arc_prob = float(arc_probs[parent_idx, child_idx])
+                label_order = np.argsort(rel_probs[parent_idx, child_idx])[::-1][:max_labels_per_pair]
+                for label_id in label_order:
+                    label = self.id2label.get(int(label_id), "UNK")
+                    if label == "UNK" or label == "nonsense" or label not in self.label2id:
+                        continue
+                    rel_prob = float(rel_probs[parent_idx, child_idx, int(label_id)])
+                    if rel_prob <= 0.0:
+                        continue
+
+                    skip_reason = _hierarchy_hint_skip_reason(
+                        parent_idx,
+                        child_idx,
+                        label,
+                        arc_prob=arc_prob,
+                        rel_prob=rel_prob,
+                    )
+                    if skip_reason is not None:
+                        static_reject_counts[f"hierarchy_{skip_reason}"] += 1
+                        continue
+
+                    code = empty_validator.validate(
+                        parent_idx,
+                        child_idx,
+                        label,
+                        mode="phase2",
+                        check_cycle=False,
+                        check_pattern=False,
+                    )
+                    if code != EdgeValidationCode.OK:
+                        static_reject_counts[code.name] += 1
+                        continue
+
+                    comps = _edge_components(label)
+                    if label == "next_word":
+                        p_type = node_types[parent_idx]
+                        c_type = node_types[child_idx]
+                        if (p_type in adjacent_only_types or c_type in adjacent_only_types) and abs(parent_idx - child_idx) != 1:
+                            static_reject_counts["NEXT_WORD_NOT_ADJACENT"] += 1
+                            continue
+                    if node_types[parent_idx] == "FactualPredicator" and "as:modification" in comps:
+                        static_reject_counts["FACTUAL_PREDICATOR_CONSTRAINT_VIOLATED"] += 1
+                        continue
+
+                    confidence = float(arc_prob * rel_prob)
+                    utility = _safe_log(arc_prob) - _safe_log(1.0 - arc_prob) + _safe_log(rel_prob)
+                    struct_factor = 1.0
+                    if self.edge_prob_tables is not None:
+                        struct_factor = float(
+                            self.edge_prob_tables.get_prob_child_given_pos(node_types[parent_idx], label)
+                            ** self.lam_pos_prob
+                        )
+                        utility += _safe_log(struct_factor)
+
+                    raw_by_child[child_idx].append({
+                        "parent": int(parent_idx),
+                        "child": int(child_idx),
+                        "label": str(label),
+                        "label_id": int(label_id),
+                        "arc_prob": float(arc_prob),
+                        "rel_prob": float(rel_prob),
+                        "confidence": float(confidence),
+                        "utility": float(utility),
+                        "struct_factor": float(struct_factor),
+                        "above_threshold": bool(arc_prob >= float(self.arc_threshold) and rel_prob >= self.MIN_LABEL_PROB),
+                    })
+
+        candidates: List[Dict[str, Any]] = []
+        truncated_children = []
+        for child_idx, child_candidates in raw_by_child.items():
+            if not child_candidates:
+                continue
+            child_candidates.sort(key=lambda e: (-float(e["utility"]), -float(e["confidence"]), int(e["parent"]), str(e["label"])))
+            kept = child_candidates[:max_candidates_per_child]
+            if len(child_candidates) > len(kept):
+                truncated_children.append({
+                    "child": int(child_idx),
+                    "raw": int(len(child_candidates)),
+                    "kept": int(len(kept)),
+                })
+            candidates.extend(kept)
+
+        edge_count = len(candidates)
+        root_offset = edge_count
+        order_offset = edge_count + num_words
+        total_vars = edge_count + (2 * num_words)
+
+        by_pair: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+        incoming_by_child: Dict[int, List[int]] = defaultdict(list)
+        outgoing_by_parent: Dict[int, List[int]] = defaultdict(list)
+        full_label_by_parent: Dict[Tuple[int, str], List[int]] = defaultdict(list)
+        frame_by_node: Dict[Tuple[int, str], List[int]] = defaultdict(list)
+        next_in_by_node: Dict[int, List[int]] = defaultdict(list)
+        non_next_out_by_node: Dict[int, List[int]] = defaultdict(list)
+        punct_in_by_node: Dict[int, List[int]] = defaultdict(list)
+        incoming_at_by_node: Dict[int, List[Tuple[int, str]]] = defaultdict(list)
+        outgoing_at_by_node: Dict[int, List[Tuple[int, str]]] = defaultdict(list)
+        pair_any_vars: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+        pair_mod_vars: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+        aux_child_by_parent_child: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+        unsupported_aux_child_pair_vars: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+
+        for var_idx, edge in enumerate(candidates):
+            parent_idx = int(edge["parent"])
+            child_idx = int(edge["child"])
+            label = str(edge["label"])
+            comps = _edge_components(label)
+            pair_key = (parent_idx, child_idx)
+            undirected_pair = tuple(sorted((parent_idx, child_idx)))
+            by_pair[pair_key].append(var_idx)
+            incoming_by_child[child_idx].append(var_idx)
+            outgoing_by_parent[parent_idx].append(var_idx)
+            full_label_by_parent[(parent_idx, label)].append(var_idx)
+            pair_any_vars[undirected_pair].append(var_idx)
+            if _is_modification_label(label):
+                pair_mod_vars[undirected_pair].append(var_idx)
+            if comps & primary_aux_at:
+                aux_child_by_parent_child[(parent_idx, child_idx)].append(var_idx)
+            if not (comps & hierarchy_hint_at):
+                unsupported_aux_child_pair_vars[undirected_pair].append(var_idx)
+            if label == "next_word":
+                next_in_by_node[child_idx].append(var_idx)
+            else:
+                non_next_out_by_node[parent_idx].append(var_idx)
+            if _is_punctuation_label(label):
+                punct_in_by_node[child_idx].append(var_idx)
+            at_comp = EdgeValidator._at_component(label, allow_prefix=True)
+            if at_comp is not None:
+                incoming_at_by_node[child_idx].append((var_idx, at_comp))
+                outgoing_at_by_node[parent_idx].append((var_idx, at_comp))
+            for comp in frame_components:
+                if comp in comps:
+                    frame_by_node[(parent_idx, comp)].append(var_idx)
+                if f"reverse_{comp}" in comps:
+                    frame_by_node[(child_idx, comp)].append(var_idx)
+
+        row_idx: List[int] = []
+        col_idx: List[int] = []
+        values: List[float] = []
+        lower: List[float] = []
+        upper: List[float] = []
+
+        def _add_constraint(terms: List[Tuple[int, float]], lb: float, ub: float) -> None:
+            row = len(lower)
+            for col, val in terms:
+                row_idx.append(row)
+                col_idx.append(int(col))
+                values.append(float(val))
+            lower.append(float(lb))
+            upper.append(float(ub))
+
+        # One label per directed pair.
+        for idxs in by_pair.values():
+            _add_constraint([(i, 1.0) for i in idxs], -np.inf, 1.0)
+
+        # Exactly one root.
+        if num_words > 0:
+            _add_constraint([(root_offset + i, 1.0) for i in range(num_words)], 1.0, 1.0)
+
+        # Root/non-root indegree contract:
+        # root: indegree == 0; every non-root: indegree >= 1.
+        for node_idx in range(num_words):
+            incoming = incoming_by_child.get(node_idx, [])
+            root_var = root_offset + node_idx
+            max_incoming = max(1, len(incoming))
+            _add_constraint([(i, 1.0) for i in incoming] + [(root_var, 1.0)], 1.0, np.inf)
+            _add_constraint([(i, 1.0) for i in incoming] + [(root_var, float(max_incoming))], -np.inf, float(max_incoming))
+
+        # Root gets topological order 0. Selected edges must increase order by >= 1.
+        if num_words > 0:
+            max_order = max(0, num_words - 1)
+            for node_idx in range(num_words):
+                _add_constraint(
+                    [(order_offset + node_idx, 1.0), (root_offset + node_idx, float(max_order))],
+                    -np.inf,
+                    float(max_order),
+                )
+            for var_idx, edge in enumerate(candidates):
+                parent_idx = int(edge["parent"])
+                child_idx = int(edge["child"])
+                _add_constraint(
+                    [
+                        (order_offset + parent_idx, 1.0),
+                        (order_offset + child_idx, -1.0),
+                        (var_idx, float(num_words)),
+                    ],
+                    -np.inf,
+                    float(num_words - 1),
+                )
+
+        # Outgoing full-label cardinality, with root-specific func.arg allowance.
+        for (parent_idx, label), idxs in full_label_by_parent.items():
+            base_max = int(self._get_max_edge_count(node_types[parent_idx], label, is_root=False))
+            root_max = int(self._get_max_edge_count(node_types[parent_idx], label, is_root=True))
+            bonus = max(0, root_max - base_max)
+            terms = [(i, 1.0) for i in idxs]
+            if bonus:
+                terms.append((root_offset + parent_idx, -float(bonus)))
+            _add_constraint(terms, -np.inf, float(base_max))
+
+        # Frame arity: no repeated pred.arg.x / variable / body for the same logical parent.
+        for idxs in frame_by_node.values():
+            _add_constraint([(i, 1.0) for i in idxs], -np.inf, 1.0)
+
+        # next_word target constraints: if a node receives next_word, it has no
+        # other incoming edge and may only emit next_word edges.
+        for node_idx, next_idxs in next_in_by_node.items():
+            incoming = incoming_by_child.get(node_idx, [])
+            if incoming:
+                _add_constraint(
+                    [(i, 1.0) for i in incoming] + [(i, float(max(0, len(incoming) - 1))) for i in next_idxs],
+                    -np.inf,
+                    float(len(incoming)),
+                )
+            non_next_out = non_next_out_by_node.get(node_idx, [])
+            if non_next_out:
+                _add_constraint(
+                    [(i, 1.0) for i in non_next_out] + [(i, float(len(non_next_out))) for i in next_idxs],
+                    -np.inf,
+                    float(len(non_next_out)),
+                )
+
+        # Punctuation edges attach leaf nodes.
+        for node_idx, punct_idxs in punct_in_by_node.items():
+            outgoing = outgoing_by_parent.get(node_idx, [])
+            if outgoing:
+                _add_constraint(
+                    [(i, 1.0) for i in outgoing] + [(i, float(len(outgoing))) for i in punct_idxs],
+                    -np.inf,
+                    float(len(outgoing)),
+                )
+
+        # The next three constraint families are high-order and can be much
+        # larger than the final selected graph. In lazy mode we do not enumerate
+        # them upfront: solve a compact ILP, inspect the selected graph, add only
+        # violated cuts, and re-solve.
+        lazy_constraint_keys: Set[Tuple[Any, ...]] = set()
+        at_conflict_count = 0
+        aux_child_subgraph_constraints = 0
+        triangle_constraints = 0
+        triangle_truncated = False
+
+        def _add_lazy_constraint(
+            key: Tuple[Any, ...],
+            terms: List[Tuple[int, float]],
+            lb: float,
+            ub: float,
+            family: str,
+        ) -> bool:
+            nonlocal at_conflict_count, aux_child_subgraph_constraints, triangle_constraints, triangle_truncated
+            if key in lazy_constraint_keys:
+                return False
+            if family == "modification_triangle" and triangle_constraints >= self.ilp_max_triangle_constraints:
+                triangle_truncated = True
+                return False
+            lazy_constraint_keys.add(key)
+            _add_constraint(terms, lb, ub)
+            if family == "at_chain_conflict":
+                at_conflict_count += 1
+            elif family == "aux_child_subgraph":
+                aux_child_subgraph_constraints += 1
+            elif family == "modification_triangle":
+                triangle_constraints += 1
+            return True
+
+        # word2gp.lower_edge_to_node_hierarchy() treats multiple primary @
+        # children of the same parent as an aux-child hierarchy. Edges inside
+        # that child-only subgraph must be @lower/@upper hints; ordinary
+        # semantic edges there cannot be converted back to Lingua.
+        aux_children_by_parent: Dict[int, Dict[int, List[int]]] = defaultdict(dict)
+        for (parent_idx, child_idx), idxs in aux_child_by_parent_child.items():
+            aux_children_by_parent[int(parent_idx)][int(child_idx)] = idxs
+
+        mod_neighbors: Dict[int, Set[int]] = defaultdict(set)
+        for a, b in pair_mod_vars.keys():
+            mod_neighbors[int(a)].add(int(b))
+            mod_neighbors[int(b)].add(int(a))
+
+        def _at_chain_cut_key(in_var: int, out_var: int) -> Tuple[Any, ...]:
+            return ("at_chain_conflict", int(in_var), int(out_var))
+
+        def _add_at_chain_cut(in_var: int, out_var: int) -> bool:
+            return _add_lazy_constraint(
+                _at_chain_cut_key(in_var, out_var),
+                [(int(in_var), 1.0), (int(out_var), 1.0)],
+                -np.inf,
+                1.0,
+                "at_chain_conflict",
+            )
+
+        def _aux_child_cut_key(parent_idx: int, first_child: int, second_child: int) -> Tuple[Any, ...]:
+            first_child, second_child = sorted((int(first_child), int(second_child)))
+            return ("aux_child_subgraph", int(parent_idx), first_child, second_child)
+
+        def _add_aux_child_cut(parent_idx: int, first_child: int, second_child: int) -> bool:
+            child_map = aux_children_by_parent[int(parent_idx)]
+            bad_pair = tuple(sorted((int(first_child), int(second_child))))
+            bad_edge_vars = unsupported_aux_child_pair_vars.get(bad_pair, [])
+            if not bad_edge_vars:
+                return False
+            terms = (
+                [(i, 1.0) for i in child_map[int(first_child)]]
+                + [(i, 1.0) for i in child_map[int(second_child)]]
+                + [(i, 1.0) for i in bad_edge_vars]
+            )
+            return _add_lazy_constraint(
+                _aux_child_cut_key(parent_idx, first_child, second_child),
+                terms,
+                -np.inf,
+                2.0,
+                "aux_child_subgraph",
+            )
+
+        def _mod_triangle_key(
+            mod_pair_1: Tuple[int, int],
+            mod_pair_2: Tuple[int, int],
+            any_pair: Tuple[int, int],
+        ) -> Tuple[Any, ...]:
+            mod_pair_1 = tuple(sorted(mod_pair_1))
+            mod_pair_2 = tuple(sorted(mod_pair_2))
+            any_pair = tuple(sorted(any_pair))
+            return ("modification_triangle",) + tuple(sorted((mod_pair_1, mod_pair_2, any_pair)))
+
+        def _add_mod_triangle_cut(
+            mod_pair_1: Tuple[int, int],
+            mod_pair_2: Tuple[int, int],
+            any_pair: Tuple[int, int],
+        ) -> bool:
+            mod_pair_1 = tuple(sorted(mod_pair_1))
+            mod_pair_2 = tuple(sorted(mod_pair_2))
+            any_pair = tuple(sorted(any_pair))
+            if mod_pair_1 not in pair_mod_vars or mod_pair_2 not in pair_mod_vars or any_pair not in pair_any_vars:
+                return False
+            terms = (
+                [(i, 1.0) for i in pair_mod_vars[mod_pair_1]]
+                + [(i, 1.0) for i in pair_mod_vars[mod_pair_2]]
+                + [(i, 1.0) for i in pair_any_vars[any_pair]]
+            )
+            return _add_lazy_constraint(
+                _mod_triangle_key(mod_pair_1, mod_pair_2, any_pair),
+                terms,
+                -np.inf,
+                2.0,
+                "modification_triangle",
+            )
+
+        def _add_all_high_order_constraints() -> Dict[str, int]:
+            added = {"at_chain_conflict": 0, "aux_child_subgraph": 0, "modification_triangle": 0}
+
+            for node_idx in range(num_words):
+                incoming_at = incoming_at_by_node.get(node_idx, [])
+                outgoing_at = outgoing_at_by_node.get(node_idx, [])
+                if not incoming_at or not outgoing_at:
+                    continue
+                for in_var, in_at in incoming_at:
+                    if in_at in hierarchy_hint_at:
+                        continue
+                    for out_var, out_at in outgoing_at:
+                        if out_at in hierarchy_hint_at or int(in_var) == int(out_var):
+                            continue
+                        if in_at != out_at or in_at not in allowed_chain_at:
+                            if _add_at_chain_cut(in_var, out_var):
+                                added["at_chain_conflict"] += 1
+
+            for parent_idx, child_map in aux_children_by_parent.items():
+                children = sorted(child_map)
+                if len(children) < 2:
+                    continue
+                for pos, first_child in enumerate(children):
+                    for second_child in children[pos + 1:]:
+                        if _add_aux_child_cut(parent_idx, first_child, second_child):
+                            added["aux_child_subgraph"] += 1
+
+            for u, neighbors in list(mod_neighbors.items()):
+                for v in list(neighbors):
+                    if u >= v:
+                        continue
+                    for w in mod_neighbors.get(u, set()):
+                        if w == v:
+                            continue
+                        if _add_mod_triangle_cut((u, v), (u, w), (v, w)):
+                            added["modification_triangle"] += 1
+                    for w in mod_neighbors.get(v, set()):
+                        if w == u:
+                            continue
+                        if _add_mod_triangle_cut((u, v), (v, w), (u, w)):
+                            added["modification_triangle"] += 1
+            return added
+
+        def _selected_pairs(selected: Set[int], pair_map: Dict[Tuple[int, int], List[int]]) -> Set[Tuple[int, int]]:
+            return {
+                tuple(pair)
+                for pair, idxs in pair_map.items()
+                if any(int(i) in selected for i in idxs)
+            }
+
+        def _add_violated_high_order_constraints(x: np.ndarray) -> Dict[str, int]:
+            selected = {idx for idx in range(edge_count) if float(x[idx]) >= 0.5}
+            added = {"at_chain_conflict": 0, "aux_child_subgraph": 0, "modification_triangle": 0}
+
+            for node_idx in range(num_words):
+                incoming_at = [(i, at) for i, at in incoming_at_by_node.get(node_idx, []) if int(i) in selected]
+                outgoing_at = [(i, at) for i, at in outgoing_at_by_node.get(node_idx, []) if int(i) in selected]
+                if not incoming_at or not outgoing_at:
+                    continue
+                for in_var, in_at in incoming_at:
+                    if in_at in hierarchy_hint_at:
+                        continue
+                    for out_var, out_at in outgoing_at:
+                        if out_at in hierarchy_hint_at or int(in_var) == int(out_var):
+                            continue
+                        if in_at != out_at or in_at not in allowed_chain_at:
+                            if _add_at_chain_cut(in_var, out_var):
+                                added["at_chain_conflict"] += 1
+
+            for parent_idx, child_map in aux_children_by_parent.items():
+                selected_children = [
+                    child_idx
+                    for child_idx, idxs in child_map.items()
+                    if any(int(i) in selected for i in idxs)
+                ]
+                if len(selected_children) < 2:
+                    continue
+                for pos, first_child in enumerate(sorted(selected_children)):
+                    for second_child in sorted(selected_children)[pos + 1:]:
+                        bad_pair = tuple(sorted((int(first_child), int(second_child))))
+                        if not any(int(i) in selected for i in unsupported_aux_child_pair_vars.get(bad_pair, [])):
+                            continue
+                        if _add_aux_child_cut(parent_idx, first_child, second_child):
+                            added["aux_child_subgraph"] += 1
+
+            selected_mod_pairs = _selected_pairs(selected, pair_mod_vars)
+            selected_any_pairs = _selected_pairs(selected, pair_any_vars)
+            selected_mod_neighbors: Dict[int, Set[int]] = defaultdict(set)
+            for a, b in selected_mod_pairs:
+                selected_mod_neighbors[int(a)].add(int(b))
+                selected_mod_neighbors[int(b)].add(int(a))
+            for u, neighbors in list(selected_mod_neighbors.items()):
+                for v in list(neighbors):
+                    if u >= v:
+                        continue
+                    for w in selected_mod_neighbors.get(u, set()):
+                        if w == v:
+                            continue
+                        if tuple(sorted((v, w))) in selected_any_pairs:
+                            if _add_mod_triangle_cut((u, v), (u, w), (v, w)):
+                                added["modification_triangle"] += 1
+                    for w in selected_mod_neighbors.get(v, set()):
+                        if w == u:
+                            continue
+                        if tuple(sorted((u, w))) in selected_any_pairs:
+                            if _add_mod_triangle_cut((u, v), (v, w), (u, w)):
+                                added["modification_triangle"] += 1
+            return added
+
+        if not self.ilp_lazy_constraints:
+            _add_all_high_order_constraints()
+
+        c = np.zeros(total_vars, dtype=float)
+        for var_idx, edge in enumerate(candidates):
+            c[var_idx] = -float(edge["utility"])
+        for node_idx in range(num_words):
+            c[root_offset + node_idx] = -float(self.ilp_root_score_weight) * float(root_scores[node_idx])
+
+        lb = np.zeros(total_vars, dtype=float)
+        ub = np.ones(total_vars, dtype=float)
+        if num_words > 0:
+            lb[order_offset:order_offset + num_words] = 0.0
+            ub[order_offset:order_offset + num_words] = float(max(0, num_words - 1))
+        integrality = np.zeros(total_vars, dtype=int)
+        integrality[:edge_count + num_words] = 1
+
+        decoding_info["ilp"] = {
+            "candidate_edges": int(edge_count),
+            "raw_candidate_edges": int(sum(len(v) for v in raw_by_child.values())),
+            "constraints": int(len(lower)),
+            "base_constraints": int(len(lower) - at_conflict_count - aux_child_subgraph_constraints - triangle_constraints),
+            "lazy_constraints": bool(self.ilp_lazy_constraints),
+            "max_lazy_rounds": int(self.ilp_max_lazy_rounds),
+            "at_chain_conflict_constraints": int(at_conflict_count),
+            "aux_child_subgraph_constraints": int(aux_child_subgraph_constraints),
+            "modification_triangle_constraints": int(triangle_constraints),
+            "triangle_constraints_truncated": bool(triangle_truncated),
+            "children_with_truncated_candidates": truncated_children[:20],
+            "static_reject_counts": dict(static_reject_counts),
+            "lazy_rounds": [],
+        }
+
+        def _solve_current_constraints() -> Any:
+            if lower:
+                A = coo_matrix((values, (row_idx, col_idx)), shape=(len(lower), total_vars)).tocsr()
+                constraints = LinearConstraint(A, np.array(lower, dtype=float), np.array(upper, dtype=float))
+            else:
+                constraints = ()
+            return milp(
+                c=c,
+                integrality=integrality,
+                bounds=Bounds(lb, ub),
+                constraints=constraints,
+                options={
+                    "time_limit": float(self.ilp_time_limit),
+                    "mip_rel_gap": float(self.ilp_mip_rel_gap),
+                    "disp": False,
+                },
+            )
+
+        result = None
+        round_idx = 0
+        eager_fallback_solve = False
+        max_lazy_rounds = max(0, int(self.ilp_max_lazy_rounds))
+        while True:
+            constraints_before = len(lower)
+            try:
+                result = _solve_current_constraints()
+            except Exception as e:
+                decoding_info["errors"].append(f"ILP solve failed: {e}")
+                decoding_info["has_issues"] = True
+                return graph, decoding_info
+
+            round_info = {
+                "round": int(round_idx),
+                "constraints_before": int(constraints_before),
+                "status": int(getattr(result, "status", -1)),
+                "success": bool(getattr(result, "success", False)),
+                "objective": float(getattr(result, "fun", 0.0)) if getattr(result, "fun", None) is not None else None,
+                "cuts_added": {"at_chain_conflict": 0, "aux_child_subgraph": 0, "modification_triangle": 0},
+            }
+            decoding_info["ilp"]["lazy_rounds"].append(round_info)
+
+            if getattr(result, "x", None) is None:
+                break
+
+            if not self.ilp_lazy_constraints or eager_fallback_solve:
+                break
+
+            added = _add_violated_high_order_constraints(np.asarray(result.x, dtype=float))
+            round_info["cuts_added"] = {k: int(v) for k, v in added.items()}
+            round_info["constraints_after"] = int(len(lower))
+            if sum(added.values()) == 0:
+                break
+
+            if round_idx >= max_lazy_rounds:
+                eager_added = _add_all_high_order_constraints()
+                round_info["eager_fallback_cuts_added"] = {k: int(v) for k, v in eager_added.items()}
+                decoding_info["warnings"].append(
+                    f"ILP lazy constraints exceeded {max_lazy_rounds} rounds; solving once with all high-order cuts"
+                )
+                eager_fallback_solve = True
+
+            round_idx += 1
+
+        decoding_info["ilp"].update({
+            "constraints": int(len(lower)),
+            "at_chain_conflict_constraints": int(at_conflict_count),
+            "aux_child_subgraph_constraints": int(aux_child_subgraph_constraints),
+            "modification_triangle_constraints": int(triangle_constraints),
+            "triangle_constraints_truncated": bool(triangle_truncated),
+        })
+
+        if triangle_truncated:
+            decoding_info["warnings"].append(
+                f"ILP modification-triangle constraints truncated at {self.ilp_max_triangle_constraints}"
+            )
+
+        if result is None:
+            decoding_info["errors"].append("ILP did not run")
+            decoding_info["has_issues"] = True
+            return graph, decoding_info
+
+        decoding_info["ilp"].update({
+            "status": int(getattr(result, "status", -1)),
+            "success": bool(getattr(result, "success", False)),
+            "message": str(getattr(result, "message", "")),
+            "objective": float(getattr(result, "fun", 0.0)) if getattr(result, "fun", None) is not None else None,
+        })
+
+        if getattr(result, "x", None) is None:
+            decoding_info["errors"].append(f"ILP returned no solution: {getattr(result, 'message', '')}")
+            decoding_info["has_issues"] = True
+            return graph, decoding_info
+
+        x = np.asarray(result.x, dtype=float)
+        selected_edge_indices = [idx for idx in range(edge_count) if x[idx] >= 0.5]
+        root_values = x[root_offset:root_offset + num_words] if num_words > 0 else np.array([])
+        ilp_root_idx = int(np.argmax(root_values)) if root_values.size else None
+        decoding_info["ilp"].update({
+            "selected_edges": int(len(selected_edge_indices)),
+            "selected_root": ilp_root_idx,
+            "selected_root_word": words[ilp_root_idx] if ilp_root_idx is not None and ilp_root_idx < len(words) else None,
+        })
+
+        node_outgoing_edges = {i: [] for i in range(num_words)}
+        node_incoming_edges = {i: [] for i in range(num_words)}
+        children_of = {i: set() for i in range(num_words)}
+        parents_of = {i: set() for i in range(num_words)}
+        edge_labels_by_pair: Dict[Tuple[int, int], str] = {}
+
+        for var_idx in sorted(selected_edge_indices, key=lambda i: (int(candidates[i]["parent"]), int(candidates[i]["child"]), str(candidates[i]["label"]))):
+            edge_info = candidates[var_idx]
+            parent_idx = int(edge_info["parent"])
+            child_idx = int(edge_info["child"])
+            label = str(edge_info["label"])
+            gpg_edge = GPGEdge(label=label)
+            gpg_edge.arc_prob = float(edge_info["arc_prob"])
+            gpg_edge.rel_prob = float(edge_info["rel_prob"])
+            gpg_edge.original_score = float(edge_info["confidence"])
+            gpg_edge.transformed_score = float(edge_info["utility"])
+            gpg_edge.struct_factor = float(edge_info.get("struct_factor", 1.0))
+            gpg_edge.decoder_source = "ilp"
+            graph.add_edge(word_to_node[parent_idx], word_to_node[child_idx], gpg_edge)
+            node_outgoing_edges[parent_idx].append(label)
+            node_incoming_edges[child_idx].append(label)
+            children_of[parent_idx].add(child_idx)
+            parents_of[child_idx].add(parent_idx)
+            edge_labels_by_pair[(parent_idx, child_idx)] = label
+
+        def _would_create_cycle(parent: int, child: int) -> bool:
+            visited = set()
+            stack = [int(child)]
+            while stack:
+                node = stack.pop()
+                if node == int(parent):
+                    return True
+                if node in visited:
+                    continue
+                visited.add(node)
+                stack.extend(children_of.get(node, set()))
+            return False
+
+        def _add_hierarchy_hint_edge(
+            p_idx: int,
+            c_idx: int,
+            label: str,
+            *,
+            source: str,
+            case: Optional[int] = None,
+            meta: Optional[Dict[str, Any]] = None,
+        ) -> Optional[Dict[str, Any]]:
+            p_idx = int(p_idx)
+            c_idx = int(c_idx)
+            label = str(label)
+            if label not in self.HIERARCHY_HINT_EDGES or label not in self.label2id:
+                return None
+            if graph.g.has_edge(word_to_node[p_idx].ID, word_to_node[c_idx].ID):
+                return None
+            arc_prob, rel_prob, confidence = _edge_model_probs(p_idx, c_idx, label)
+            skip_reason = _hierarchy_hint_skip_reason(p_idx, c_idx, label, arc_prob=arc_prob, rel_prob=rel_prob)
+            if skip_reason is None and _would_create_cycle(p_idx, c_idx):
+                skip_reason = "would_create_cycle"
+
+            info = {
+                "from": word_to_node[p_idx].ID,
+                "to": word_to_node[c_idx].ID,
+                "from_word_idx": int(p_idx),
+                "to_word_idx": int(c_idx),
+                "label": label,
+                "source": source,
+                "case": case,
+                "arc_prob": float(arc_prob),
+                "rel_prob": float(rel_prob),
+                "confidence": float(confidence),
+                "meta": meta or {},
+            }
+            if skip_reason is not None:
+                info["reason"] = skip_reason
+                decoding_info.setdefault("skipped_hierarchy_edges", []).append(info)
+                return None
+
+            edge = GPGEdge(label=label)
+            edge.arc_prob = float(arc_prob)
+            edge.rel_prob = float(rel_prob)
+            edge.original_score = float(confidence)
+            edge.transformed_score = float(confidence)
+            edge.decoder_source = source
+            edge.postprocess = True
+            edge.postprocess_case = case
+            graph.add_edge(word_to_node[p_idx], word_to_node[c_idx], edge)
+            node_outgoing_edges[p_idx].append(label)
+            node_incoming_edges[c_idx].append(label)
+            children_of[p_idx].add(c_idx)
+            parents_of[c_idx].add(p_idx)
+            edge_labels_by_pair[(p_idx, c_idx)] = label
+            return info
+
+        self._add_upper_lower_edges(
+            graph,
+            word_to_node,
+            node_outgoing_edges,
+            decoding_info,
+            add_hierarchy_hint_edge=_add_hierarchy_hint_edge,
+        )
+
+        if self.debug:
+            self._debug_visualize_step(
+                graph,
+                "final",
+                "word_lingua_ilp",
+                arc_probs=arc_probs,
+                rel_probs=rel_probs,
+                label2id={v: k for k, v in self.label2id.items()},
+            )
+
+        validation_errors = self._validate_word_lingua_graph(graph, node_types, decoding_info)
+        if validation_errors:
+            decoding_info["validation_errors"] = validation_errors
+
+        decoding_info["has_issues"] = bool(
+            decoding_info["errors"]
+            or decoding_info["warnings"]
+            or validation_errors
+            or not bool(getattr(result, "success", False))
+        )
+        return graph, decoding_info
     
     # PRIMARY_AT_EDGES: symbolic edges that represent aux node relationships
     # These are allowed to have multiple occurrences per node (unlike the old constraint)
     PRIMARY_AT_EDGES = {
         "@modification_of", "@appositive_of", "@attribute_of", 
         "@copula", "@discourse_of", "@expression", "@list", 
-        "@parataxis", "@ref_of", "@vocative_of"
+        "@parataxis", "@ref_of", "@vocative_of", "@whether_of"
     }
     
     # List-like edges that can form chains
@@ -1840,7 +2943,9 @@ class GreedyPatternDecoder:
         graph: GPGraph, 
         word_to_node: Dict[int, Any],
         node_outgoing_edges: Dict[int, List[str]],
-        decoding_info: Dict[str, Any]
+        decoding_info: Dict[str, Any],
+        *,
+        add_hierarchy_hint_edge: Callable[..., Optional[Dict[str, Any]]],
     ) -> None:
         """
         Phase 5: Add @upper and @lower edges as post-processing.
@@ -1857,6 +2962,24 @@ class GreedyPatternDecoder:
         - Add parent → grandchild with @lower
         """
         phase5_edges_added = []
+        node_to_word_idx = {node.ID: idx for idx, node in word_to_node.items()}
+        node_to_word_idx.update({str(node.ID): idx for idx, node in word_to_node.items()})
+
+        def _add_phase5_edge(parent: Any, child: Any, label: str, case: int, meta: Dict[str, Any]) -> None:
+            p_idx = node_to_word_idx.get(parent.ID, node_to_word_idx.get(str(parent.ID)))
+            c_idx = node_to_word_idx.get(child.ID, node_to_word_idx.get(str(child.ID)))
+            if p_idx is None or c_idx is None:
+                return
+            added = add_hierarchy_hint_edge(
+                int(p_idx),
+                int(c_idx),
+                label,
+                source="phase5",
+                case=case,
+                meta=meta,
+            )
+            if added is not None:
+                phase5_edges_added.append(added)
         
         # Case 1: Handle nodes with multiple @ children
         # Convert to list before iterating to avoid 'dictionary changed size during iteration'
@@ -1888,27 +3011,33 @@ class GreedyPatternDecoder:
                         if child_j in offsprings_of_gc:
                             # grandchild → child_j: @upper
                             if not graph.has_edge(grandchild, child_j):
-                                existing_edge = graph.get_edge(grandchild, child_j)
-                                if existing_edge is None and "@upper" in self.label2id:
-                                    graph.add_edge(grandchild, child_j, GPGEdge(label="@upper"))
-                                    phase5_edges_added.append({
-                                        "from": grandchild.ID,
-                                        "to": child_j.ID,
-                                        "label": "@upper",
-                                        "case": 1
-                                    })
+                                _add_phase5_edge(
+                                    grandchild,
+                                    child_j,
+                                    "@upper",
+                                    1,
+                                    {
+                                        "node": node.ID,
+                                        "child_i": child_i.ID,
+                                        "child_j": child_j.ID,
+                                        "gc_edge_label": gc_edge.label,
+                                    },
+                                )
                         else:
                             # child_j → grandchild: @lower
                             if not graph.has_edge(child_j, grandchild):
-                                existing_edge = graph.get_edge(child_j, grandchild)
-                                if existing_edge is None and "@lower" in self.label2id:
-                                    graph.add_edge(child_j, grandchild, GPGEdge(label="@lower"))
-                                    phase5_edges_added.append({
-                                        "from": child_j.ID,
-                                        "to": grandchild.ID,
-                                        "label": "@lower",
-                                        "case": 1
-                                    })
+                                _add_phase5_edge(
+                                    child_j,
+                                    grandchild,
+                                    "@lower",
+                                    1,
+                                    {
+                                        "node": node.ID,
+                                        "child_i": child_i.ID,
+                                        "child_j": child_j.ID,
+                                        "gc_edge_label": gc_edge.label,
+                                    },
+                                )
         
         # Case 2: Handle list-like chains
         # Convert to list before iterating to avoid 'dictionary changed size during iteration'
@@ -1931,15 +3060,18 @@ class GreedyPatternDecoder:
                     if aux_edge_label in gc_edge_labels:
                         # node → grandchild: @lower
                         if not graph.has_edge(node, grandchild):
-                            existing_edge = graph.get_edge(node, grandchild)
-                            if existing_edge is None and "@lower" in self.label2id:
-                                graph.add_edge(node, grandchild, GPGEdge(label="@lower"))
-                                phase5_edges_added.append({
-                                    "from": node.ID,
-                                    "to": grandchild.ID,
-                                    "label": "@lower",
-                                    "case": 2
-                                })
+                            _add_phase5_edge(
+                                node,
+                                grandchild,
+                                "@lower",
+                                2,
+                                {
+                                    "child": child.ID,
+                                    "aux_edge_label": aux_edge_label,
+                                    "child_edge_label": edge.label,
+                                    "grandchild_edge_label": gc_edge.label,
+                                },
+                            )
         
         # Record in decoding_info
         decoding_info["phase5_upper_lower_edges"] = phase5_edges_added
@@ -1959,7 +3091,8 @@ class GreedyPatternDecoder:
         Validate the word-lingua graph to ensure:
         1. All full edge labels are in the training label vocabulary
         2. All node types are in the allowed set
-        3. The graph is a single-rooted DAG
+        3. The graph is a DAG. In SDP graph mode multiple roots/components are
+           legal; legacy single-root/connectivity checks are opt-in.
         
         Returns:
             List of validation error messages (empty if valid)
@@ -1985,7 +3118,7 @@ class GreedyPatternDecoder:
                 if node.pos not in allowed_node_types:
                     errors.append(f"Invalid node type: '{node.pos}' for node '{graph.node_text(node)}'")
         
-        # 3. Check single-rooted DAG
+        # 3. Check DAG/topology
         # 3a. Check for cycles (DAG requirement)
         try:
             if nx.is_directed_acyclic_graph(graph.g):
@@ -1995,13 +3128,21 @@ class GreedyPatternDecoder:
         except Exception as e:
             errors.append(f"Error checking DAG property: {e}")
         
-        # 3b. Check single root (nodes with in-degree 0)
+        # 3b. Check single root only when tree-like legacy repair is enabled.
         roots = [node for node in list(graph.nodes()) if graph.g.in_degree(node.ID) == 0]
         if len(roots) == 0:
             errors.append("Graph has no root (all nodes have incoming edges - possible cycle)")
-        elif len(roots) > 1:
+        elif self.enforce_single_root and len(roots) > 1:
             root_texts = [graph.node_text(r) for r in roots]
             errors.append(f"Graph has multiple roots ({len(roots)}): {root_texts[:5]}{'...' if len(roots) > 5 else ''}")
+
+        # 3c. Check weak connectivity only when explicitly requested.
+        if self.enforce_connected and graph.g.number_of_nodes() > 0:
+            try:
+                if not nx.is_weakly_connected(graph.g):
+                    errors.append("Graph is not weakly connected")
+            except Exception as e:
+                errors.append(f"Error checking weak connectivity: {e}")
         
         # Log validation errors in debug mode
         if self.debug and errors:
@@ -2010,7 +3151,8 @@ class GreedyPatternDecoder:
         return errors
     
     def _sigmoid(self, x: np.ndarray) -> np.ndarray:
-        return 1 / (1 + np.exp(-np.clip(x, -500, 500)))
+        x64 = np.asarray(x, dtype=np.float64)
+        return 1 / (1 + np.exp(-np.clip(x64, -40, 40)))
     
     def _softmax(self, x: np.ndarray, axis: int = -1) -> np.ndarray:
         x_max = np.max(x, axis=axis, keepdims=True)

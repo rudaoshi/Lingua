@@ -375,6 +375,21 @@ def validate_graph(line: int | None, sample: dict[str, Any]) -> list[dict[str, A
                         "List item should be a recoverable field; do not use OtherConstant as a sibling item",
                     )
 
+        if words is not None and node.get("type") == "ModificationalConstant" and isinstance(spans, list):
+            token_indices = [
+                token_index
+                for span in spans
+                if isinstance(span, list) and len(span) == 2
+                for token_index in range(span[0], span[1] + 1)
+            ]
+            if len(token_indices) > 1 and any(words[token_index].strip() == "-" for token_index in token_indices):
+                add(
+                    errors,
+                    "HYPHENATED_MULTIWORD_MODIFICATIONAL_CONSTANT_ERROR",
+                    f"{line}:nodes[{index}]",
+                    "hyphenated multiword ModificationalConstant should be split into ExpressionFunctor or explicit Modification structure",
+                )
+
         as_edges = [edge for edge in outgoing_edges.get(index, []) if edge[2].startswith("as:")]
         if as_edges and len(outgoing_edges.get(index, [])) != 1:
             edge_summary = ", ".join(
@@ -498,6 +513,10 @@ def validate_graph(line: int | None, sample: dict[str, Any]) -> list[dict[str, A
         right_bounds = node_span_bounds(right)
         if not (left_bounds and hyphen_bounds and right_bounds):
             continue
+        modifier_hyphen = (
+            left.get("type") == "ModificationalConstant"
+            and target.get("type") == "PunctuationalConstant"
+        )
         has_punctuation_parent = any(
             nodes[parent_start].get("type") == "PunctuationalConstant"
             and parent_label == "as:punctuation"
@@ -507,6 +526,7 @@ def validate_graph(line: int | None, sample: dict[str, Any]) -> list[dict[str, A
             left_bounds[1] < hyphen_bounds[0] < right_bounds[0]
             and right.get("type") not in compound_blocked_right_types
             and left.get("type") not in {"PunctuationalConstant", "SymbolConstant"}
+            and not modifier_hyphen
             and not has_punctuation_parent
         ):
             add(

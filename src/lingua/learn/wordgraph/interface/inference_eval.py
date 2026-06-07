@@ -152,6 +152,38 @@ def main():
                        help="Weight for parent given child probability constraint")
     parser.add_argument("--edge_factor_decode_weight", type=float, default=0.0,
                        help="Weight for factorized edge-label evidence during legal-label decoding")
+    parser.add_argument("--decoder_mode", type=str, default="ilp",
+                       choices=["hybrid", "ilp", "sdp_graph"],
+                       help="Decoder backend: ILP global graph selection, fast SDP graph with ILP fallback, or pure SDP greedy graph mode")
+    parser.add_argument("--ilp_max_candidates_per_child", type=int, default=16,
+                       help="Maximum incoming labeled-edge candidates retained per child for ILP decoding")
+    parser.add_argument("--ilp_max_labels_per_pair", type=int, default=4,
+                       help="Maximum relation labels considered for each directed pair in ILP decoding")
+    parser.add_argument("--ilp_time_limit", type=float, default=30.0,
+                       help="MILP solver time limit per sentence")
+    parser.add_argument("--ilp_mip_rel_gap", type=float, default=0.001,
+                       help="MILP relative optimality gap")
+    parser.add_argument("--ilp_root_score_weight", type=float, default=1.0,
+                       help="Weight for model root logits in the ILP objective")
+    parser.add_argument("--ilp_lazy_constraints", dest="ilp_lazy_constraints", action="store_true",
+                       help="Use lazy high-order ILP cuts")
+    parser.add_argument("--no_ilp_lazy_constraints", dest="ilp_lazy_constraints", action="store_false",
+                       help="Eagerly enumerate all high-order ILP cuts")
+    parser.set_defaults(ilp_lazy_constraints=True)
+    parser.add_argument("--ilp_max_lazy_rounds", type=int, default=4,
+                       help="Maximum lazy-cut rounds before eager fallback")
+    parser.add_argument("--hybrid_fallback_policy", type=str, default="conversion",
+                       choices=["conversion", "issues"],
+                       help="Hybrid fallback trigger: conversion only, or any decoder issue")
+    parser.add_argument("--enforce_connected", action="store_true",
+                       help="Opt into legacy connectivity repair after local graph decoding")
+    parser.add_argument("--enable_phase4_rewrites", action="store_true",
+                       help="Opt into legacy Phase 4 common-child edge rewrites")
+    parser.add_argument("--enforce_single_root", dest="enforce_single_root", action="store_true",
+                       help="Enforce a single-root DAG by adding best-scored root attachments")
+    parser.add_argument("--no_enforce_single_root", dest="enforce_single_root", action="store_false",
+                       help="Decode a pure SDP-style graph without final single-root repair")
+    parser.set_defaults(enforce_single_root=True)
     
     # Evaluation arguments
     parser.add_argument("--edge_match", type=str, default="exact",
@@ -204,6 +236,18 @@ def main():
         lam_pos_prob=args.lam_pos_prob,
         lam_parent_given_child_prob=args.lam_parent_given_child_prob,
         edge_factor_decode_weight=args.edge_factor_decode_weight,
+        decoder_mode=args.decoder_mode,
+        ilp_max_candidates_per_child=args.ilp_max_candidates_per_child,
+        ilp_max_labels_per_pair=args.ilp_max_labels_per_pair,
+        ilp_time_limit=args.ilp_time_limit,
+        ilp_mip_rel_gap=args.ilp_mip_rel_gap,
+        ilp_root_score_weight=args.ilp_root_score_weight,
+        ilp_lazy_constraints=args.ilp_lazy_constraints,
+        ilp_max_lazy_rounds=args.ilp_max_lazy_rounds,
+        hybrid_fallback_policy=args.hybrid_fallback_policy,
+        enforce_connected=args.enforce_connected,
+        enable_phase4_rewrites=args.enable_phase4_rewrites,
+        enforce_single_root=args.enforce_single_root,
         debug=args.debug,
         debug_dir=args.debug_dir,
     )
@@ -530,6 +574,18 @@ def main():
             "max_length": args.max_length,
             "arc_threshold": args.arc_threshold,
             "edge_factor_decode_weight": args.edge_factor_decode_weight,
+            "decoder_mode": args.decoder_mode,
+            "ilp_max_candidates_per_child": args.ilp_max_candidates_per_child,
+            "ilp_max_labels_per_pair": args.ilp_max_labels_per_pair,
+            "ilp_time_limit": args.ilp_time_limit,
+            "ilp_mip_rel_gap": args.ilp_mip_rel_gap,
+            "ilp_root_score_weight": args.ilp_root_score_weight,
+            "ilp_lazy_constraints": args.ilp_lazy_constraints,
+            "ilp_max_lazy_rounds": args.ilp_max_lazy_rounds,
+            "hybrid_fallback_policy": args.hybrid_fallback_policy,
+            "enforce_connected": args.enforce_connected,
+            "enable_phase4_rewrites": args.enable_phase4_rewrites,
+            "enforce_single_root": args.enforce_single_root,
             "edge_match": args.edge_match,
         },
     }
