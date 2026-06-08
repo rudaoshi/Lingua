@@ -177,6 +177,54 @@ def test_preserves_dag_sharing_as_shared_token_set_links():
     assert all(unit["is_discontinuous"] for unit in expand_units)
 
 
+def test_encodes_sibling_contained_descendants_as_shared_args():
+    sample = {
+        "lingua": {
+            "words": ["volume", "submitted"],
+            "graph": {
+                "nodes": [
+                    {"spans": "Modification", "type": "ModificationalFunctor"},
+                    {"spans": [[0, 0]], "type": "NominalConstant"},
+                    {"spans": [[1, 1]], "type": "FactualPredicator"},
+                ],
+                "edges": [
+                    {"start": 0, "end": 1, "label": "variable"},
+                    {"start": 0, "end": 2, "label": "body"},
+                    {"start": 2, "end": 1, "label": "pred.arg.1"},
+                ],
+            },
+        }
+    }
+
+    oracle = extract_hierarchical_oracle(sample).to_dict()
+    modification_unit = oracle["units"][0]
+    body_child = next(
+        child for child in modification_unit["children"] if child["role"] == "BODY"
+    )
+
+    assert modification_unit["input_token_ids"] == [0, 1]
+    assert not modification_unit["has_overlapping_roles"]
+    assert modification_unit["has_shared_arg"]
+    assert labels_by_token(modification_unit) == {
+        0: ["B-VARIABLE"],
+        1: ["B-BODY"],
+    }
+    assert body_child["token_ids"] == [0, 1]
+    assert body_child["label_token_ids"] == [1]
+    assert body_child["shared_arg_links"] == [
+        {
+            "owner_role": "BODY",
+            "shared_role": "VARIABLE",
+            "token_ids": [0],
+            "tokens": ["volume"],
+            "text": "volume",
+            "shared_unit_pos": "NominalConstant",
+            "shared_aux_kind": NON_AUX_KIND,
+        }
+    ]
+    assert modification_unit["shared_arg_links"] == body_child["shared_arg_links"]
+
+
 def test_marks_overlapping_roles_when_a_token_gets_multiple_layer_labels():
     sample = {
         "lingua": {

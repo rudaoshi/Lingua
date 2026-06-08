@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from lingua.utils.normalization import normalize_lingua_edges_to_predicate_nodes
@@ -25,20 +25,48 @@ class TokenLabel:
 
 
 @dataclass(frozen=True)
+class HierarchicalOracleSharedArgLink:
+    owner_role: str
+    shared_role: str
+    token_ids: tuple[int, ...]
+    tokens: tuple[str, ...]
+    shared_unit_pos: str
+    shared_aux_kind: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "owner_role": self.owner_role,
+            "shared_role": self.shared_role,
+            "token_ids": list(self.token_ids),
+            "tokens": list(self.tokens),
+            "text": _tokens_text(self.tokens),
+            "shared_unit_pos": self.shared_unit_pos,
+            "shared_aux_kind": self.shared_aux_kind,
+        }
+
+
+@dataclass(frozen=True)
 class HierarchicalOracleChild:
     role: str
     edge_label: str
     token_ids: tuple[int, ...]
     tokens: tuple[str, ...]
+    label_token_ids: tuple[int, ...]
+    label_tokens: tuple[str, ...]
     unit_pos: str
     aux_kind: str
     incoming_count: int
     is_external: bool
     is_discontinuous: bool
+    shared_arg_links: tuple[HierarchicalOracleSharedArgLink, ...]
 
     @property
     def is_shared(self) -> bool:
         return self.incoming_count > 1
+
+    @property
+    def has_shared_arg(self) -> bool:
+        return len(self.shared_arg_links) > 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -47,12 +75,18 @@ class HierarchicalOracleChild:
             "token_ids": list(self.token_ids),
             "tokens": list(self.tokens),
             "text": _tokens_text(self.tokens),
+            "label_token_ids": list(self.label_token_ids),
+            "label_tokens": list(self.label_tokens),
+            "label_text": _tokens_text(self.label_tokens),
             "unit_pos": self.unit_pos,
             "aux_kind": self.aux_kind,
             "incoming_count": self.incoming_count,
             "is_shared": self.is_shared,
+            "has_shared_arg": self.has_shared_arg,
             "is_external": self.is_external,
             "is_discontinuous": self.is_discontinuous,
+            "is_label_discontinuous": _is_discontinuous(self.label_token_ids),
+            "shared_arg_links": [link.to_dict() for link in self.shared_arg_links],
         }
 
 
@@ -82,11 +116,20 @@ class HierarchicalOracleUnit:
         return any(child.is_external for child in self.children)
 
     @property
+    def has_shared_arg(self) -> bool:
+        return any(child.has_shared_arg for child in self.children)
+
+    @property
     def has_overlapping_roles(self) -> bool:
         return any(len(token_label.labels) > 1 for token_label in self.token_labels)
 
     def to_dict(self) -> dict[str, Any]:
         shared_links = [child.to_dict() for child in self.children if child.is_shared]
+        shared_arg_links = [
+            link.to_dict()
+            for child in self.children
+            for link in child.shared_arg_links
+        ]
         external_links = [child.to_dict() for child in self.children if child.is_external]
         return {
             "input_token_ids": list(self.input_token_ids),
@@ -102,11 +145,13 @@ class HierarchicalOracleUnit:
             "self_token_ids": list(self.self_token_ids),
             "is_discontinuous": _is_discontinuous(self.input_token_ids),
             "has_shared_child": self.has_shared_child,
+            "has_shared_arg": self.has_shared_arg,
             "has_external_child": self.has_external_child,
             "has_overlapping_roles": self.has_overlapping_roles,
             "token_labels": [token_label.to_dict() for token_label in self.token_labels],
             "children": [child.to_dict() for child in self.children],
             "shared_links": shared_links,
+            "shared_arg_links": shared_arg_links,
             "external_links": external_links,
         }
 
@@ -168,6 +213,7 @@ def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExa
             )
             for _, edge in outgoing[node_index]
         )
+        children = _resolve_sibling_shared_args(children, words)
         token_labels = _token_labels(
             words=words,
             input_token_ids=input_token_ids,
@@ -282,12 +328,111 @@ def _child_from_edge(
         edge_label=edge["label"],
         token_ids=token_ids,
         tokens=_tokens_for_ids(words, token_ids),
+        label_token_ids=token_ids,
+        label_tokens=_tokens_for_ids(words, token_ids),
         unit_pos=_unit_pos(nodes[child_index]),
         aux_kind=_aux_kind(nodes[child_index]),
         incoming_count=incoming_count[child_index],
         is_external=any(token_id not in input_token_set for token_id in token_ids),
         is_discontinuous=_is_discontinuous(token_ids),
+        shared_arg_links=(),
     )
+
+
+def _resolve_sibling_shared_args(
+    children: tuple[HierarchicalOracleChild, ...],
+    words: tuple[str, ...],
+) -> tuple[HierarchicalOracleChild, ...]:
+    """Keep sibling-contained tokens as shared-arg links instead of duplicate BIO labels."""
+    if len(children) < 2:
+        return children
+
+    child_token_sets = [set(child.token_ids) for child in children]
+    label_token_sets = [set(child.token_ids) for child in children]
+    links_by_child: list[list[HierarchicalOracleSharedArgLink]] = [
+        [] for _ in children
+    ]
+
+    for left_index, left in enumerate(children):
+        left_tokens = child_token_sets[left_index]
+        if not left_tokens:
+            continue
+        for right_index in range(left_index + 1, len(children)):
+            right = children[right_index]
+            right_tokens = child_token_sets[right_index]
+            if not right_tokens:
+                continue
+            overlap = left_tokens & right_tokens
+            if not overlap:
+                continue
+            if left.role == right.role and left_tokens == right_tokens:
+                continue
+
+            kept_index = _preferred_overlap_owner(
+                left_index=left_index,
+                right_index=right_index,
+                left=left,
+                right=right,
+                left_tokens=left_tokens,
+                right_tokens=right_tokens,
+            )
+            pruned_index = right_index if kept_index == left_index else left_index
+            owner = children[pruned_index]
+            shared = children[kept_index]
+
+            token_ids = tuple(sorted(overlap))
+            label_token_sets[pruned_index].difference_update(overlap)
+            links_by_child[pruned_index].append(
+                HierarchicalOracleSharedArgLink(
+                    owner_role=owner.role,
+                    shared_role=shared.role,
+                    token_ids=token_ids,
+                    tokens=_tokens_for_ids(words, token_ids),
+                    shared_unit_pos=shared.unit_pos,
+                    shared_aux_kind=shared.aux_kind,
+                )
+            )
+
+    return tuple(
+        replace(
+            child,
+            label_token_ids=tuple(sorted(label_token_sets[index])),
+            label_tokens=_tokens_for_ids(words, tuple(sorted(label_token_sets[index]))),
+            shared_arg_links=tuple(links_by_child[index]),
+        )
+        for index, child in enumerate(children)
+    )
+
+
+def _preferred_overlap_owner(
+    *,
+    left_index: int,
+    right_index: int,
+    left: HierarchicalOracleChild,
+    right: HierarchicalOracleChild,
+    left_tokens: set[int],
+    right_tokens: set[int],
+) -> int:
+    left_priority = _role_overlap_priority(left.role)
+    right_priority = _role_overlap_priority(right.role)
+    if left_priority != right_priority:
+        return left_index if left_priority > right_priority else right_index
+    if len(left_tokens) != len(right_tokens):
+        return left_index if len(left_tokens) < len(right_tokens) else right_index
+    return left_index
+
+
+def _role_overlap_priority(role: str) -> int:
+    priorities = {
+        "VARIABLE": 100,
+        "ARG1": 90,
+        "ARG2": 85,
+        "ARG3": 80,
+        "ARG4": 75,
+        "FUNC_ARG": 70,
+        "BODY": 10,
+    }
+    return priorities.get(role, 50)
 
 
 def _token_labels(
@@ -301,7 +446,7 @@ def _token_labels(
 
     _add_bio_labels(labels_by_token, self_token_ids, input_token_set, "HEAD")
     for child in children:
-        _add_bio_labels(labels_by_token, child.token_ids, input_token_set, child.role)
+        _add_bio_labels(labels_by_token, child.label_token_ids, input_token_set, child.role)
 
     return tuple(
         TokenLabel(
