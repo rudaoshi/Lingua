@@ -24,7 +24,8 @@ def test_builds_training_examples_from_lingua_jsonl():
     dataset = HierarchicalOracleDataset(examples, vocab)
 
     assert examples
-    assert "FactualPredicator" in vocab.unit_kind2id
+    assert "FactualPredicator" in vocab.unit_pos2id
+    assert "<non_aux>" in vocab.aux_kind2id
     assert "B-HEAD" in vocab.role_label2id
     assert dataset[0]["word_ids"]
     assert sum(dataset[0]["unit_mask"]) > 0
@@ -41,7 +42,8 @@ def test_model_trains_and_evaluates_one_batch():
     )
     model = HierarchicalTokenSetParser(
         vocab_size=len(vocab.word2id),
-        num_unit_kinds=len(vocab.unit_kind2id),
+        num_unit_pos=len(vocab.unit_pos2id),
+        num_aux_kinds=len(vocab.aux_kind2id),
         num_role_labels=len(vocab.role_label2id),
         embedding_dim=16,
         hidden_size=16,

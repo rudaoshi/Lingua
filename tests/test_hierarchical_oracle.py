@@ -1,6 +1,6 @@
 import pytest
 
-from lingua.learn.hierarchical import extract_hierarchical_oracle
+from lingua.learn.hierarchical import NON_AUX_KIND, extract_hierarchical_oracle
 
 
 def labels_by_token(unit):
@@ -42,7 +42,8 @@ def test_extracts_token_set_expansion_targets():
 
     root_unit = oracle["units"][0]
     assert root_unit["input_token_ids"] == [0, 1, 2, 3]
-    assert root_unit["unit_kind"] == "FactualPredicator"
+    assert root_unit["unit_pos"] == "FactualPredicator"
+    assert root_unit["aux_kind"] == NON_AUX_KIND
     assert root_unit["decision"] == "expand"
     assert root_unit["self_token_ids"] == [1]
     assert labels_by_token(root_unit) == {
@@ -52,16 +53,18 @@ def test_extracts_token_set_expansion_targets():
         3: ["I-ARG2"],
     }
     assert [
-        (child["role"], child["token_ids"], child["unit_kind"])
+        (child["role"], child["token_ids"], child["unit_pos"], child["aux_kind"])
         for child in root_unit["children"]
     ] == [
-        ("ARG1", [0], "NominalConstant"),
-        ("ARG2", [2, 3], "Modification"),
+        ("ARG1", [0], "NominalConstant", NON_AUX_KIND),
+        ("ARG2", [2, 3], "ModificationalFunctor", "Modification"),
     ]
 
     modification_unit = next(
-        unit for unit in oracle["units"] if unit["unit_kind"] == "Modification"
+        unit for unit in oracle["units"] if unit["aux_kind"] == "Modification"
     )
+    assert modification_unit["unit_pos"] == "ModificationalFunctor"
+    assert modification_unit["is_aux"]
     assert modification_unit["input_token_ids"] == [2, 3]
     assert modification_unit["decision"] == "expand"
     assert labels_by_token(modification_unit) == {
@@ -69,11 +72,11 @@ def test_extracts_token_set_expansion_targets():
         3: ["B-VARIABLE"],
     }
     assert [
-        (child["role"], child["token_ids"], child["unit_kind"])
+        (child["role"], child["token_ids"], child["unit_pos"], child["aux_kind"])
         for child in modification_unit["children"]
     ] == [
-        ("VARIABLE", [3], "NominalConstant"),
-        ("BODY", [2], "ModificationalConstant"),
+        ("VARIABLE", [3], "NominalConstant", NON_AUX_KIND),
+        ("BODY", [2], "ModificationalConstant", NON_AUX_KIND),
     ]
 
     leaf_units = {
@@ -112,9 +115,9 @@ def test_normalizes_as_modification_before_extracting_targets():
 
     root_unit = oracle["units"][0]
     assert [
-        (child["role"], child["token_ids"], child["unit_kind"])
+        (child["role"], child["token_ids"], child["unit_pos"], child["aux_kind"])
         for child in root_unit["children"]
-    ] == [("ARG2", [1, 2], "Modification")]
+    ] == [("ARG2", [1, 2], "ModificationalFunctor", "Modification")]
     assert labels_by_token(root_unit) == {
         0: ["B-HEAD"],
         1: ["B-ARG2"],
@@ -122,18 +125,20 @@ def test_normalizes_as_modification_before_extracting_targets():
     }
 
     modification_unit = next(
-        unit for unit in oracle["units"] if unit["unit_kind"] == "Modification"
+        unit for unit in oracle["units"] if unit["aux_kind"] == "Modification"
     )
+    assert modification_unit["unit_pos"] == "ModificationalFunctor"
+    assert modification_unit["is_aux"]
     assert labels_by_token(modification_unit) == {
         1: ["B-BODY"],
         2: ["B-VARIABLE"],
     }
     assert [
-        (child["role"], child["token_ids"], child["unit_kind"])
+        (child["role"], child["token_ids"], child["unit_pos"], child["aux_kind"])
         for child in modification_unit["children"]
     ] == [
-        ("VARIABLE", [2], "NominalConstant"),
-        ("BODY", [1], "ModificationalConstant"),
+        ("VARIABLE", [2], "NominalConstant", NON_AUX_KIND),
+        ("BODY", [1], "ModificationalConstant", NON_AUX_KIND),
     ]
 
 

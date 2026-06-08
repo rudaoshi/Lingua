@@ -26,7 +26,7 @@ from lingua.learn.hierarchical.dataset import (
     collate_hierarchical_batch,
 )
 from lingua.learn.hierarchical.model import HierarchicalTokenSetParser
-from lingua.learn.hierarchical.oracle import extract_hierarchical_oracle
+from lingua.learn.hierarchical.oracle import NON_AUX_KIND, extract_hierarchical_oracle
 from lingua.learn.hierarchical.training import move_batch_to_device, save_metrics
 
 
@@ -42,7 +42,9 @@ class AnalysisRecord:
 class MetricAccumulator:
     def __init__(self) -> None:
         self.total_units = 0
-        self.unit_kind_correct = 0
+        self.unit_pos_correct = 0
+        self.aux_kind_correct = 0
+        self.unit_identity_correct = 0
         self.decision_correct = 0
         self.unit_exact = 0
         self.role_tp = 0
@@ -54,7 +56,8 @@ class MetricAccumulator:
     def update(
         self,
         *,
-        kind_match: bool,
+        pos_match: bool,
+        aux_match: bool,
         decision_match: bool,
         unit_role_match: bool,
         role_tp: int,
@@ -64,9 +67,11 @@ class MetricAccumulator:
         role_token_total: int,
     ) -> None:
         self.total_units += 1
-        self.unit_kind_correct += int(kind_match)
+        self.unit_pos_correct += int(pos_match)
+        self.aux_kind_correct += int(aux_match)
+        self.unit_identity_correct += int(pos_match and aux_match)
         self.decision_correct += int(decision_match)
-        self.unit_exact += int(kind_match and decision_match and unit_role_match)
+        self.unit_exact += int(pos_match and aux_match and decision_match and unit_role_match)
         self.role_tp += role_tp
         self.role_fp += role_fp
         self.role_fn += role_fn
@@ -78,7 +83,9 @@ class MetricAccumulator:
         role_recall = self.role_tp / (self.role_tp + self.role_fn + 1e-8)
         role_f1 = 2 * role_precision * role_recall / (role_precision + role_recall + 1e-8)
         return {
-            "unit_kind_accuracy": self.unit_kind_correct / (self.total_units + 1e-8),
+            "unit_pos_accuracy": self.unit_pos_correct / (self.total_units + 1e-8),
+            "aux_kind_accuracy": self.aux_kind_correct / (self.total_units + 1e-8),
+            "unit_identity_accuracy": self.unit_identity_correct / (self.total_units + 1e-8),
             "decision_accuracy": self.decision_correct / (self.total_units + 1e-8),
             "role_precision": role_precision,
             "role_recall": role_recall,
@@ -230,7 +237,8 @@ def build_analysis_records(
                             unit_index=unit_index,
                             words=words,
                             input_token_ids=tuple(int(token_id) for token_id in unit["input_token_ids"]),
-                            unit_kind=str(unit["unit_kind"]),
+                            unit_pos=str(unit["unit_pos"]),
+                            aux_kind=str(unit["aux_kind"]),
                             decision=str(unit["decision"]),
                             role_labels_by_token=labels_by_token,
                         ),
@@ -270,7 +278,8 @@ def evaluate_split(
         collate_fn=lambda batch: collate_hierarchical_batch(batch, pad_id=vocab.pad_id),
     )
 
-    id_to_unit_kind = invert_mapping(vocab.unit_kind2id)
+    id_to_unit_pos = invert_mapping(vocab.unit_pos2id)
+    id_to_aux_kind = invert_mapping(vocab.aux_kind2id)
     id_to_decision = invert_mapping(vocab.decision2id)
     id_to_role = invert_mapping(vocab.role_label2id)
     role_ids = sorted(id_to_role)
@@ -278,7 +287,8 @@ def evaluate_split(
     metrics = MetricAccumulator()
     role_label_metrics: dict[str, Counter[str]] = defaultdict(Counter)
     role_family_metrics: dict[str, Counter[str]] = defaultdict(Counter)
-    unit_kind_confusion: Counter[tuple[str, str]] = Counter()
+    unit_pos_confusion: Counter[tuple[str, str]] = Counter()
+    aux_kind_confusion: Counter[tuple[str, str]] = Counter()
     decision_confusion: Counter[tuple[str, str]] = Counter()
     role_set_confusion: Counter[tuple[str, str]] = Counter()
     bio_prefix_confusion: Counter[tuple[str, str]] = Counter()
@@ -304,7 +314,8 @@ def evaluate_split(
 
             batch = move_batch_to_device(batch, device)
             output = model(batch["word_ids"], batch["attention_mask"], batch["unit_mask"])
-            unit_kind_pred = output["unit_kind_logits"].argmax(dim=-1).cpu()
+            unit_pos_pred = output["unit_pos_logits"].argmax(dim=-1).cpu()
+            aux_kind_pred = output["aux_kind_logits"].argmax(dim=-1).cpu()
             decision_pred = output["decision_logits"].argmax(dim=-1).cpu()
             role_scores = torch.sigmoid(output["role_logits"])
             role_pred = role_scores >= threshold
@@ -319,7 +330,8 @@ def evaluate_split(
                 prediction = build_unit_prediction(
                     split_name=split_name,
                     record=record,
-                    pred_kind=id_to_unit_kind[int(unit_kind_pred[row_index])],
+                    pred_unit_pos=id_to_unit_pos[int(unit_pos_pred[row_index])],
+                    pred_aux_kind=id_to_aux_kind[int(aux_kind_pred[row_index])],
                     pred_decision=id_to_decision[int(decision_pred[row_index])],
                     pred_role_sets=predicted_role_sets(
                         role_pred[row_index],
@@ -333,7 +345,8 @@ def evaluate_split(
                     metrics=metrics,
                     role_label_metrics=role_label_metrics,
                     role_family_metrics=role_family_metrics,
-                    unit_kind_confusion=unit_kind_confusion,
+                    unit_pos_confusion=unit_pos_confusion,
+                    aux_kind_confusion=aux_kind_confusion,
                     decision_confusion=decision_confusion,
                     role_set_confusion=role_set_confusion,
                     bio_prefix_confusion=bio_prefix_confusion,
@@ -363,7 +376,8 @@ def evaluate_split(
         "error_type_counts": dict(error_type_counts.most_common()),
         "role_label_metrics": counter_metrics(role_label_metrics),
         "role_family_metrics": counter_metrics(role_family_metrics),
-        "unit_kind_confusion": confusion_to_rows(unit_kind_confusion),
+        "unit_pos_confusion": confusion_to_rows(unit_pos_confusion),
+        "aux_kind_confusion": confusion_to_rows(aux_kind_confusion),
         "decision_confusion": confusion_to_rows(decision_confusion),
         "role_set_confusion_top": confusion_to_rows(role_set_confusion, limit=top_k),
         "bio_prefix_confusion_top": confusion_to_rows(bio_prefix_confusion, limit=top_k),
@@ -389,7 +403,8 @@ def build_unit_prediction(
     *,
     split_name: str,
     record: AnalysisRecord,
-    pred_kind: str,
+    pred_unit_pos: str,
+    pred_aux_kind: str,
     pred_decision: str,
     pred_role_sets: dict[int, tuple[str, ...]],
 ) -> dict[str, Any]:
@@ -439,13 +454,16 @@ def build_unit_prediction(
                 }
             )
 
-    kind_match = pred_kind == record.example.unit_kind
+    pos_match = pred_unit_pos == record.example.unit_pos
+    aux_match = pred_aux_kind == record.example.aux_kind
     decision_match = pred_decision == record.example.decision
     unit_role_match = role_token_exact == role_token_total
-    unit_exact = kind_match and decision_match and unit_role_match
+    unit_exact = pos_match and aux_match and decision_match and unit_role_match
     error_types = []
-    if not kind_match:
-        error_types.append("unit_kind")
+    if not pos_match:
+        error_types.append("unit_pos")
+    if not aux_match:
+        error_types.append("aux_kind")
     if not decision_match:
         error_types.append("decision")
     if role_fn:
@@ -462,7 +480,8 @@ def build_unit_prediction(
         "root_token_sets": [list(token_ids) for token_ids in record.root_token_sets],
         "unit_features": unit_features(record.unit),
         "gold": {
-            "unit_kind": record.example.unit_kind,
+            "unit_pos": record.example.unit_pos,
+            "aux_kind": record.example.aux_kind,
             "decision": record.example.decision,
             "input_token_ids": list(record.example.input_token_ids),
             "input_tokens": [
@@ -475,12 +494,15 @@ def build_unit_prediction(
             "external_links": record.unit.get("external_links", []),
         },
         "pred": {
-            "unit_kind": pred_kind,
+            "unit_pos": pred_unit_pos,
+            "aux_kind": pred_aux_kind,
             "decision": pred_decision,
             "roles_by_token": pred_roles_by_token,
         },
         "matches": {
-            "unit_kind": kind_match,
+            "unit_pos": pos_match,
+            "aux_kind": aux_match,
+            "unit_identity": pos_match and aux_match,
             "decision": decision_match,
             "roles": unit_role_match,
             "unit_exact": unit_exact,
@@ -503,7 +525,8 @@ def update_analysis_counters(
     metrics: MetricAccumulator,
     role_label_metrics: dict[str, Counter[str]],
     role_family_metrics: dict[str, Counter[str]],
-    unit_kind_confusion: Counter[tuple[str, str]],
+    unit_pos_confusion: Counter[tuple[str, str]],
+    aux_kind_confusion: Counter[tuple[str, str]],
     decision_confusion: Counter[tuple[str, str]],
     role_set_confusion: Counter[tuple[str, str]],
     bio_prefix_confusion: Counter[tuple[str, str]],
@@ -517,7 +540,8 @@ def update_analysis_counters(
     matches = prediction["matches"]
     counts = prediction["role_counts"]
     metrics.update(
-        kind_match=matches["unit_kind"],
+        pos_match=matches["unit_pos"],
+        aux_match=matches["aux_kind"],
         decision_match=matches["decision"],
         unit_role_match=matches["roles"],
         role_tp=int(counts["tp"]),
@@ -528,7 +552,8 @@ def update_analysis_counters(
     )
     update_breakdowns(prediction, breakdowns)
 
-    unit_kind_confusion[(prediction["gold"]["unit_kind"], prediction["pred"]["unit_kind"])] += 1
+    unit_pos_confusion[(prediction["gold"]["unit_pos"], prediction["pred"]["unit_pos"])] += 1
+    aux_kind_confusion[(prediction["gold"]["aux_kind"], prediction["pred"]["aux_kind"])] += 1
     decision_confusion[(prediction["gold"]["decision"], prediction["pred"]["decision"])] += 1
     for error_type in prediction["error_types"]:
         error_type_counts[error_type] += 1
@@ -564,7 +589,9 @@ def update_breakdowns(
 ) -> None:
     features = prediction["unit_features"]
     keys = {
-        "unit_kind": prediction["gold"]["unit_kind"],
+        "unit_pos": prediction["gold"]["unit_pos"],
+        "aux_kind": prediction["gold"]["aux_kind"],
+        "is_aux": str(prediction["gold"]["aux_kind"] != NON_AUX_KIND).lower(),
         "decision": prediction["gold"]["decision"],
         "depth_bucket": depth_bucket(features["depth"]),
         "input_size_bucket": count_bucket(features["input_token_count"]),
@@ -578,7 +605,8 @@ def update_breakdowns(
     }
     for breakdown_name, value in keys.items():
         breakdowns[breakdown_name][value].update(
-            kind_match=prediction["matches"]["unit_kind"],
+            pos_match=prediction["matches"]["unit_pos"],
+            aux_match=prediction["matches"]["aux_kind"],
             decision_match=prediction["matches"]["decision"],
             unit_role_match=prediction["matches"]["roles"],
             role_tp=int(prediction["role_counts"]["tp"]),
@@ -617,7 +645,8 @@ def build_model_from_checkpoint(
     dropout = float(config.get("dropout", 0.2))
     return HierarchicalTokenSetParser(
         vocab_size=len(vocab.word2id),
-        num_unit_kinds=len(vocab.unit_kind2id),
+        num_unit_pos=len(vocab.unit_pos2id),
+        num_aux_kinds=len(vocab.aux_kind2id),
         num_role_labels=len(vocab.role_label2id),
         embedding_dim=embedding_dim,
         hidden_size=hidden_size,

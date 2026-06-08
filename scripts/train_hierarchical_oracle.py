@@ -55,7 +55,8 @@ def main() -> int:
     parser.add_argument("--hidden_size", type=int, default=128)
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--unit_kind_weight", type=float, default=1.0)
+    parser.add_argument("--unit_pos_weight", type=float, default=1.0)
+    parser.add_argument("--aux_kind_weight", type=float, default=1.0)
     parser.add_argument("--decision_weight", type=float, default=0.5)
     parser.add_argument("--role_weight", type=float, default=1.0)
     parser.add_argument("--threshold", type=float, default=0.5)
@@ -116,7 +117,8 @@ def main() -> int:
 
     model = HierarchicalTokenSetParser(
         vocab_size=len(vocab.word2id),
-        num_unit_kinds=len(vocab.unit_kind2id),
+        num_unit_pos=len(vocab.unit_pos2id),
+        num_aux_kinds=len(vocab.aux_kind2id),
         num_role_labels=len(vocab.role_label2id),
         embedding_dim=args.embedding_dim,
         hidden_size=args.hidden_size,
@@ -134,7 +136,8 @@ def main() -> int:
             train_loader,
             optimizer,
             device,
-            unit_kind_weight=args.unit_kind_weight,
+            unit_pos_weight=args.unit_pos_weight,
+            aux_kind_weight=args.aux_kind_weight,
             decision_weight=args.decision_weight,
             role_weight=args.role_weight,
         )
@@ -215,7 +218,8 @@ def save_run_config(
         "num_dev_units": len(dev_examples),
         "num_test_units": len(test_examples),
         "vocab_size": len(vocab.word2id),
-        "num_unit_kinds": len(vocab.unit_kind2id),
+        "num_unit_pos": len(vocab.unit_pos2id),
+        "num_aux_kinds": len(vocab.aux_kind2id),
         "num_role_labels": len(vocab.role_label2id),
     }
     path.parent.mkdir(parents=True, exist_ok=True)

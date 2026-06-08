@@ -10,7 +10,8 @@ class HierarchicalTokenSetParser(nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        num_unit_kinds: int,
+        num_unit_pos: int,
+        num_aux_kinds: int,
         num_role_labels: int,
         embedding_dim: int = 128,
         hidden_size: int = 128,
@@ -29,7 +30,8 @@ class HierarchicalTokenSetParser(nn.Module):
         )
         encoded_size = hidden_size * 2
         self.dropout = nn.Dropout(dropout)
-        self.unit_kind_classifier = nn.Linear(encoded_size, num_unit_kinds)
+        self.unit_pos_classifier = nn.Linear(encoded_size, num_unit_pos)
+        self.aux_kind_classifier = nn.Linear(encoded_size, num_aux_kinds)
         self.decision_classifier = nn.Linear(encoded_size, num_decisions)
         self.role_classifier = nn.Linear(encoded_size, num_role_labels)
 
@@ -56,7 +58,8 @@ class HierarchicalTokenSetParser(nn.Module):
         unit_repr = self.dropout(unit_repr)
 
         return {
-            "unit_kind_logits": self.unit_kind_classifier(unit_repr),
+            "unit_pos_logits": self.unit_pos_classifier(unit_repr),
+            "aux_kind_logits": self.aux_kind_classifier(unit_repr),
             "decision_logits": self.decision_classifier(unit_repr),
             "role_logits": self.role_classifier(encoded).masked_fill(
                 ~attention_mask.unsqueeze(-1),

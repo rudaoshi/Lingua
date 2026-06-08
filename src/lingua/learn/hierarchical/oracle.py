@@ -7,6 +7,9 @@ from typing import Any
 from lingua.utils.normalization import normalize_lingua_edges_to_predicate_nodes
 
 
+NON_AUX_KIND = "<non_aux>"
+
+
 @dataclass(frozen=True)
 class TokenLabel:
     token_id: int
@@ -27,7 +30,8 @@ class HierarchicalOracleChild:
     edge_label: str
     token_ids: tuple[int, ...]
     tokens: tuple[str, ...]
-    unit_kind: str
+    unit_pos: str
+    aux_kind: str
     incoming_count: int
     is_external: bool
     is_discontinuous: bool
@@ -43,7 +47,8 @@ class HierarchicalOracleChild:
             "token_ids": list(self.token_ids),
             "tokens": list(self.tokens),
             "text": _tokens_text(self.tokens),
-            "unit_kind": self.unit_kind,
+            "unit_pos": self.unit_pos,
+            "aux_kind": self.aux_kind,
             "incoming_count": self.incoming_count,
             "is_shared": self.is_shared,
             "is_external": self.is_external,
@@ -55,7 +60,8 @@ class HierarchicalOracleChild:
 class HierarchicalOracleUnit:
     input_token_ids: tuple[int, ...]
     input_tokens: tuple[str, ...]
-    unit_kind: str
+    unit_pos: str
+    aux_kind: str
     depth: int
     incoming_count: int
     is_root: bool
@@ -86,7 +92,9 @@ class HierarchicalOracleUnit:
             "input_token_ids": list(self.input_token_ids),
             "input_tokens": list(self.input_tokens),
             "input_text": _tokens_text(self.input_tokens),
-            "unit_kind": self.unit_kind,
+            "unit_pos": self.unit_pos,
+            "aux_kind": self.aux_kind,
+            "is_aux": self.aux_kind != NON_AUX_KIND,
             "depth": self.depth,
             "incoming_count": self.incoming_count,
             "is_root": self.is_root,
@@ -127,8 +135,9 @@ def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExa
     """Extract recursive token-set labeling targets from a gold Lingua graph.
 
     Each unit is represented by the token set covered by `DESC(v)`. The target for
-    one layer is a unit-kind label plus BIO role labels over that token set. Gold
-    graph node indices are used only internally to recover the layer structure.
+    one layer is a POS/type label, an aux-kind label, and BIO role labels over
+    that token set. Gold graph node indices are used only internally to recover
+    the layer structure.
     """
 
     lingua, sentence = _coerce_lingua_sample(sample)
@@ -169,7 +178,8 @@ def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExa
             HierarchicalOracleUnit(
                 input_token_ids=input_token_ids,
                 input_tokens=input_tokens,
-                unit_kind=_unit_kind(nodes[node_index]),
+                unit_pos=_unit_pos(nodes[node_index]),
+                aux_kind=_aux_kind(nodes[node_index]),
                 depth=depths[node_index],
                 incoming_count=incoming_count[node_index],
                 is_root=node_index in roots,
@@ -272,7 +282,8 @@ def _child_from_edge(
         edge_label=edge["label"],
         token_ids=token_ids,
         tokens=_tokens_for_ids(words, token_ids),
-        unit_kind=_unit_kind(nodes[child_index]),
+        unit_pos=_unit_pos(nodes[child_index]),
+        aux_kind=_aux_kind(nodes[child_index]),
         incoming_count=incoming_count[child_index],
         is_external=any(token_id not in input_token_set for token_id in token_ids),
         is_discontinuous=_is_discontinuous(token_ids),
@@ -315,11 +326,15 @@ def _add_bio_labels(
         previous_token_id = token_id
 
 
-def _unit_kind(node: dict[str, Any]) -> str:
+def _unit_pos(node: dict[str, Any]) -> str:
+    return str(node["type"])
+
+
+def _aux_kind(node: dict[str, Any]) -> str:
     spans = node["spans"]
     if isinstance(spans, str):
         return spans
-    return node["type"]
+    return NON_AUX_KIND
 
 
 def _role_from_edge_label(edge_label: str) -> str:

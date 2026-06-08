@@ -13,11 +13,13 @@ from torch.utils.data import DataLoader
 def compute_hierarchical_loss(
     output: dict[str, torch.Tensor],
     batch: dict[str, torch.Tensor],
-    unit_kind_weight: float = 1.0,
+    unit_pos_weight: float = 1.0,
+    aux_kind_weight: float = 1.0,
     decision_weight: float = 1.0,
     role_weight: float = 1.0,
 ) -> dict[str, torch.Tensor]:
-    unit_kind_loss = F.cross_entropy(output["unit_kind_logits"], batch["unit_kind"])
+    unit_pos_loss = F.cross_entropy(output["unit_pos_logits"], batch["unit_pos"])
+    aux_kind_loss = F.cross_entropy(output["aux_kind_logits"], batch["aux_kind"])
     decision_loss = F.cross_entropy(output["decision_logits"], batch["decision"])
     role_mask = batch["unit_mask"].unsqueeze(-1)
     if role_mask.any():
@@ -29,13 +31,15 @@ def compute_hierarchical_loss(
         role_loss = torch.tensor(0.0, device=output["role_logits"].device)
 
     total_loss = (
-        unit_kind_weight * unit_kind_loss
+        unit_pos_weight * unit_pos_loss
+        + aux_kind_weight * aux_kind_loss
         + decision_weight * decision_loss
         + role_weight * role_loss
     )
     return {
         "loss": total_loss,
-        "unit_kind_loss": unit_kind_loss,
+        "unit_pos_loss": unit_pos_loss,
+        "aux_kind_loss": aux_kind_loss,
         "decision_loss": decision_loss,
         "role_loss": role_loss,
     }
@@ -46,14 +50,16 @@ def train_one_epoch(
     dataloader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
-    unit_kind_weight: float = 1.0,
+    unit_pos_weight: float = 1.0,
+    aux_kind_weight: float = 1.0,
     decision_weight: float = 1.0,
     role_weight: float = 1.0,
 ) -> dict[str, float]:
     model.train()
     totals: dict[str, float] = {
         "loss": 0.0,
-        "unit_kind_loss": 0.0,
+        "unit_pos_loss": 0.0,
+        "aux_kind_loss": 0.0,
         "decision_loss": 0.0,
         "role_loss": 0.0,
     }
@@ -66,7 +72,8 @@ def train_one_epoch(
         losses = compute_hierarchical_loss(
             output,
             batch,
-            unit_kind_weight=unit_kind_weight,
+            unit_pos_weight=unit_pos_weight,
+            aux_kind_weight=aux_kind_weight,
             decision_weight=decision_weight,
             role_weight=role_weight,
         )
@@ -90,7 +97,9 @@ def evaluate_hierarchical_model(
 ) -> dict[str, float]:
     model.eval()
     total_units = 0
-    unit_kind_correct = 0
+    unit_pos_correct = 0
+    aux_kind_correct = 0
+    unit_identity_correct = 0
     decision_correct = 0
     unit_exact = 0
 
@@ -104,7 +113,8 @@ def evaluate_hierarchical_model(
         batch = move_batch_to_device(batch, device)
         output = model(batch["word_ids"], batch["attention_mask"], batch["unit_mask"])
 
-        unit_kind_pred = output["unit_kind_logits"].argmax(dim=-1)
+        unit_pos_pred = output["unit_pos_logits"].argmax(dim=-1)
+        aux_kind_pred = output["aux_kind_logits"].argmax(dim=-1)
         decision_pred = output["decision_logits"].argmax(dim=-1)
         role_scores = torch.sigmoid(output["role_logits"])
         role_pred = role_scores >= threshold
@@ -117,11 +127,15 @@ def evaluate_hierarchical_model(
         role_mask = batch["unit_mask"].unsqueeze(-1).expand_as(role_gold)
         token_mask = batch["unit_mask"]
 
-        kind_match = unit_kind_pred == batch["unit_kind"]
+        pos_match = unit_pos_pred == batch["unit_pos"]
+        aux_match = aux_kind_pred == batch["aux_kind"]
+        identity_match = pos_match & aux_match
         decision_match = decision_pred == batch["decision"]
-        unit_kind_correct += int(kind_match.sum().item())
+        unit_pos_correct += int(pos_match.sum().item())
+        aux_kind_correct += int(aux_match.sum().item())
+        unit_identity_correct += int(identity_match.sum().item())
         decision_correct += int(decision_match.sum().item())
-        total_units += int(batch["unit_kind"].numel())
+        total_units += int(batch["unit_pos"].numel())
 
         masked_pred = role_pred & role_mask
         masked_gold = role_gold & role_mask
@@ -134,14 +148,16 @@ def evaluate_hierarchical_model(
         role_token_total += int(token_mask.sum().item())
 
         per_unit_role_match = ((role_pred == role_gold) | ~role_mask).all(dim=(1, 2))
-        unit_exact += int((kind_match & decision_match & per_unit_role_match).sum().item())
+        unit_exact += int((identity_match & decision_match & per_unit_role_match).sum().item())
 
     role_precision = role_tp / (role_tp + role_fp + 1e-8)
     role_recall = role_tp / (role_tp + role_fn + 1e-8)
     role_f1 = 2 * role_precision * role_recall / (role_precision + role_recall + 1e-8)
 
     return {
-        "unit_kind_accuracy": unit_kind_correct / (total_units + 1e-8),
+        "unit_pos_accuracy": unit_pos_correct / (total_units + 1e-8),
+        "aux_kind_accuracy": aux_kind_correct / (total_units + 1e-8),
+        "unit_identity_accuracy": unit_identity_correct / (total_units + 1e-8),
         "decision_accuracy": decision_correct / (total_units + 1e-8),
         "role_precision": role_precision,
         "role_recall": role_recall,

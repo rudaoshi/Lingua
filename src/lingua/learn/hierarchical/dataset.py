@@ -25,7 +25,8 @@ class HierarchicalTrainingExample:
     unit_index: int
     words: tuple[str, ...]
     input_token_ids: tuple[int, ...]
-    unit_kind: str
+    unit_pos: str
+    aux_kind: str
     decision: str
     role_labels_by_token: tuple[tuple[str, ...], ...]
 
@@ -33,7 +34,8 @@ class HierarchicalTrainingExample:
 @dataclass(frozen=True)
 class HierarchicalVocab:
     word2id: dict[str, int]
-    unit_kind2id: dict[str, int]
+    unit_pos2id: dict[str, int]
+    aux_kind2id: dict[str, int]
     role_label2id: dict[str, int]
     decision2id: dict[str, int]
 
@@ -48,7 +50,8 @@ class HierarchicalVocab:
     def to_dict(self) -> dict[str, Any]:
         return {
             "word2id": self.word2id,
-            "unit_kind2id": self.unit_kind2id,
+            "unit_pos2id": self.unit_pos2id,
+            "aux_kind2id": self.aux_kind2id,
             "role_label2id": self.role_label2id,
             "decision2id": self.decision2id,
         }
@@ -57,7 +60,8 @@ class HierarchicalVocab:
     def from_dict(cls, data: dict[str, Any]) -> "HierarchicalVocab":
         return cls(
             word2id={str(key): int(value) for key, value in data["word2id"].items()},
-            unit_kind2id={str(key): int(value) for key, value in data["unit_kind2id"].items()},
+            unit_pos2id={str(key): int(value) for key, value in data["unit_pos2id"].items()},
+            aux_kind2id={str(key): int(value) for key, value in data["aux_kind2id"].items()},
             role_label2id={str(key): int(value) for key, value in data["role_label2id"].items()},
             decision2id={str(key): int(value) for key, value in data["decision2id"].items()},
         )
@@ -113,7 +117,8 @@ class HierarchicalOracleDataset(Dataset):
             "word_ids": word_ids,
             "unit_mask": unit_mask,
             "role_targets": role_targets,
-            "unit_kind": self.vocab.unit_kind2id.get(example.unit_kind, self.vocab.unit_kind2id[UNK_TOKEN]),
+            "unit_pos": self.vocab.unit_pos2id.get(example.unit_pos, self.vocab.unit_pos2id[UNK_TOKEN]),
+            "aux_kind": self.vocab.aux_kind2id.get(example.aux_kind, self.vocab.aux_kind2id[UNK_TOKEN]),
             "decision": self.vocab.decision2id[example.decision],
             "length": len(word_ids),
         }
@@ -151,7 +156,8 @@ def build_hierarchical_examples(
                         unit_index=unit_index,
                         words=tuple(str(word) for word in oracle["words"]),
                         input_token_ids=tuple(int(token_id) for token_id in unit["input_token_ids"]),
-                        unit_kind=str(unit["unit_kind"]),
+                        unit_pos=str(unit["unit_pos"]),
+                        aux_kind=str(unit["aux_kind"]),
                         decision=str(unit["decision"]),
                         role_labels_by_token=labels_by_token,
                     )
@@ -167,12 +173,14 @@ def build_vocab(
     min_word_freq: int = 1,
 ) -> HierarchicalVocab:
     word_counter: Counter[str] = Counter()
-    unit_kinds = set()
+    unit_pos = set()
+    aux_kinds = set()
     role_labels = set()
 
     for example in examples:
         word_counter.update(_normalize_word(word) for word in example.words)
-        unit_kinds.add(example.unit_kind)
+        unit_pos.add(example.unit_pos)
+        aux_kinds.add(example.aux_kind)
         for _, labels in example.role_labels_by_token:
             for label in labels:
                 if label != "O":
@@ -185,9 +193,13 @@ def build_vocab(
 
     return HierarchicalVocab(
         word2id=word2id,
-        unit_kind2id={
+        unit_pos2id={
             label: index
-            for index, label in enumerate([UNK_TOKEN, *sorted(unit_kinds)])
+            for index, label in enumerate([UNK_TOKEN, *sorted(unit_pos)])
+        },
+        aux_kind2id={
+            label: index
+            for index, label in enumerate([UNK_TOKEN, *sorted(aux_kinds)])
         },
         role_label2id={label: index for index, label in enumerate(sorted(role_labels))},
         decision2id={label: index for index, label in enumerate(DECISION_LABELS)},
@@ -203,7 +215,8 @@ def collate_hierarchical_batch(batch: list[dict[str, Any]], pad_id: int) -> dict
     attention_mask = torch.zeros((batch_size, max_len), dtype=torch.bool)
     unit_mask = torch.zeros((batch_size, max_len), dtype=torch.bool)
     role_targets = torch.zeros((batch_size, max_len, num_role_labels), dtype=torch.float)
-    unit_kind = torch.zeros(batch_size, dtype=torch.long)
+    unit_pos = torch.zeros(batch_size, dtype=torch.long)
+    aux_kind = torch.zeros(batch_size, dtype=torch.long)
     decision = torch.zeros(batch_size, dtype=torch.long)
 
     for row_index, item in enumerate(batch):
@@ -212,7 +225,8 @@ def collate_hierarchical_batch(batch: list[dict[str, Any]], pad_id: int) -> dict
         attention_mask[row_index, :length] = True
         unit_mask[row_index, :length] = torch.tensor(item["unit_mask"], dtype=torch.bool)
         role_targets[row_index, :length] = torch.tensor(item["role_targets"], dtype=torch.float)
-        unit_kind[row_index] = int(item["unit_kind"])
+        unit_pos[row_index] = int(item["unit_pos"])
+        aux_kind[row_index] = int(item["aux_kind"])
         decision[row_index] = int(item["decision"])
 
     return {
@@ -222,7 +236,8 @@ def collate_hierarchical_batch(batch: list[dict[str, Any]], pad_id: int) -> dict
         "attention_mask": attention_mask,
         "unit_mask": unit_mask,
         "role_targets": role_targets,
-        "unit_kind": unit_kind,
+        "unit_pos": unit_pos,
+        "aux_kind": aux_kind,
         "decision": decision,
     }
 
