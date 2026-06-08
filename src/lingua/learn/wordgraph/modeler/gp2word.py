@@ -8,6 +8,7 @@ import copy
 logger = logging.getLogger(__name__)
 
 from lingua.utils.topology_sorter import LinguaGraphTopologySorter
+from lingua.utils.normalization import normalize_lingua_edges_to_predicate_nodes
 
 
 
@@ -20,6 +21,7 @@ symbol_nodelabel2edge = {
     "List":"@list",
     "Modification":"@modification_of",
     "Parataxis":"@parataxis",
+    "Punctuation":"@punctuation_of",
     "Ref":"@ref_of",
     "Vocative":"@vocative_of",
     "Whether":"@whether_of",
@@ -38,6 +40,7 @@ symbol_nodelabel2pos = {
     "List": "ListFunctor",
     "Modification": "ModificationalFunctor",
     "Parataxis": "ConjunctionalFunctor",
+    "Punctuation": "PunctuationalConstant",
     "Ref": "ReferentialPredicator",
     "Vocative": "ModificationalFunctor",
     "Whether": "GeneralFunctor",
@@ -461,6 +464,20 @@ def remove_aux_nodes(lingua_graph: GPGraph, ordered_nodes: list, debug=False):
                     })
                 
                 current_head_node = arg2
+            elif this_aux_node.label == "Punctuation":
+                punct = this_tail_node[0]
+
+                resolve_cycle_before_add_edge(lingua_graph, punct, current_head_node)
+                new_edge_label = add_relation(punct, current_head_node, symbol_nodelabel2edge[this_aux_node.label], lingua_graph)
+
+                if debug:
+                    layer_debug["changes"]["edges_added"].append({
+                        "from": lingua_graph.node_text(punct),
+                        "to": lingua_graph.node_text(current_head_node),
+                        "label": new_edge_label
+                    })
+
+                current_head_node = punct
             else:
                 # lower_edge_level(lingua_graph, current_tail_node)
                 aux_children = [current_head_node] + this_tail_node
@@ -669,3 +686,21 @@ def lingua2wordlingua(lingua_graph: GPGraph, debug=False):
         raise e
 
     return lingua_graph, updated, debug_info
+
+
+def standardized_lingua2wordlingua(lingua: GPGraph | dict, debug=False):
+    """Normalize Lingua JSON, then run the original Lingua -> WordLingua path."""
+
+    if isinstance(lingua, GPGraph):
+        lingua_data = lingua.data()
+    else:
+        lingua_data = copy.deepcopy(lingua)
+
+    normalized_data, normalization_stats = normalize_lingua_edges_to_predicate_nodes(lingua_data)
+    normalized_graph = GPGraph.parse(normalized_data)
+    word_lingua_graph, updated, debug_info = lingua2wordlingua(normalized_graph, debug=debug)
+
+    if debug:
+        debug_info["normalize_lingua_edges_to_predicate_nodes"] = normalization_stats
+
+    return word_lingua_graph, updated or bool(normalization_stats), debug_info

@@ -5,6 +5,8 @@ from collections import defaultdict
 import itertools
 import logging
 
+import networkx as nx
+
 from lingua.structure.utils import positions2spans
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,87 @@ def _node_sort_key(lingua_graph: GPGraph, node: GPGNode):
     else:
         start = 10**9
     return (start, str(node.ID))
+
+
+def _node_start(node: GPGNode) -> int:
+    if not isinstance(node, GPGPhraseNode):
+        return 10**9
+    starts = [
+        span[0]
+        for span in node.spans
+        if isinstance(span, tuple) and isinstance(span[0], int)
+    ]
+    return min(starts) if starts else 10**9
+
+
+def _punctuation_restore_order(parent: GPGNode, children: list[GPGNode]) -> list[GPGNode]:
+    """Order repeated ``@punctuation_of`` children from inner to outer."""
+
+    parent_start = _node_start(parent)
+
+    def key(child: GPGNode):
+        child_start = _node_start(child)
+        is_punctuation = int(getattr(child, "pos", None) == "PunctuationalConstant")
+        distance = abs(parent_start - child_start)
+        return (1 - is_punctuation, distance, child_start, str(child.ID))
+
+    return sorted(children, key=key)
+
+
+def _first_symbolic_label(labels: list[str]) -> str | None:
+    for label in labels:
+        if label in symbol_edge2nodelabel:
+            return label
+    return None
+
+
+def _mixed_aux_restore_order(
+    parent: GPGNode,
+    children: list[GPGNode],
+    aux_edge_labels_by_child: dict[int, list[str]],
+) -> list[GPGNode]:
+    """Order mixed aux labels from inner wrappers to outer wrappers."""
+
+    punctuation_order = _punctuation_restore_order(parent, children)
+    punctuation_rank = {node.ID: index for index, node in enumerate(punctuation_order)}
+
+    def key(child: GPGNode):
+        aux_label = _first_symbolic_label(aux_edge_labels_by_child[child.ID])
+        is_punctuation_aux = int(aux_label == "@punctuation_of")
+        return (
+            is_punctuation_aux,
+            punctuation_rank.get(child.ID, len(punctuation_rank)),
+            _node_start(child),
+            str(child.ID),
+        )
+
+    return sorted(children, key=key)
+
+
+def _aux_hierarchy_topological_order(
+    hierarchy_graph: nx.DiGraph,
+    parent: GPGNode,
+    children: list[GPGNode],
+    aux_edge_labels_by_child: dict[int, list[str]],
+) -> list[int]:
+    aux_labels = {
+        label
+        for labels in aux_edge_labels_by_child.values()
+        for label in labels
+        if label in symbol_edge2nodelabel
+    }
+    if "@punctuation_of" not in aux_labels:
+        return list(nx.topological_sort(hierarchy_graph))
+
+    restore_order = _mixed_aux_restore_order(parent, children, aux_edge_labels_by_child)
+    restore_rank = {node.ID: index for index, node in enumerate(restore_order)}
+
+    return list(
+        nx.lexicographical_topological_sort(
+            hierarchy_graph,
+            key=lambda node_id: (-restore_rank.get(node_id, len(restore_rank)), str(node_id)),
+        )
+    )
 
 
 def choose_primary_root(lingua_graph: GPGraph, roots):
@@ -198,6 +281,258 @@ def restore_reversed_edges_in_this_layer(lingua_graph: GPGraph, source_node: GPG
             yield child, reversed_edge_label
 
 
+def transfer_child_of_whether(current_root: GPGNode, aux_node: GPGAuxNode) -> None:
+    """Lift the in-memory Whether marker when a word-lingua node is rewrapped."""
+
+    if hasattr(current_root, "child_of_whether") and current_root.child_of_whether:
+        aux_node.child_of_whether = True
+        delattr(current_root, "child_of_whether")
+
+
+def _find_modification_covering(lingua_graph: GPGraph, body_source: GPGNode, variable_target: GPGNode) -> GPGNode | None:
+    candidates = []
+    for node in lingua_graph.nodes():
+        if not isinstance(node, GPGAuxNode) or node.label != "Modification":
+            continue
+        children = edge2children(lingua_graph, node)
+        variables = children.get(("variable",), [])
+        bodies = children.get(("body",), [])
+        if variable_target not in variables or not bodies:
+            continue
+        for body in bodies:
+            if body == body_source or body_source in lingua_graph.offsprings(body):
+                try:
+                    distance = nx.shortest_path_length(lingua_graph.g, node.ID, body_source.ID)
+                except nx.NetworkXNoPath:
+                    distance = 0
+                candidates.append((distance, str(node.ID), node))
+
+    if not candidates:
+        return None
+    return max(candidates)[-1]
+
+
+def _add_aux_node_for_symbolic_edge(
+    lingua_graph: GPGraph,
+    source: GPGNode,
+    target: GPGNode,
+    aux_label: str,
+    *,
+    body_override: GPGNode | None = None,
+    rewire_from: GPGNode | None = None,
+):
+    aux_node_label = symbol_edge2nodelabel[aux_label]
+    aux_node_pos = symbol_nodelabel2pos[aux_node_label]
+    aux_node = GPGAuxNode(aux_node_label, pos=aux_node_pos)
+    lingua_graph.add_node(aux_node)
+
+    if aux_node_label == "Punctuation":
+        lingua_graph.add_relation(aux_node, target, "pred.arg.1")
+        lingua_graph.add_relation(aux_node, source, "pred.arg.2")
+    elif aux_node_pos == "ModificationalFunctor":
+        lingua_graph.add_relation(aux_node, target, "variable")
+        lingua_graph.add_relation(aux_node, body_override or source, "body")
+    elif aux_node_pos.endswith("Predicator"):
+        lingua_graph.add_relation(aux_node, target, "pred.arg.1")
+        lingua_graph.add_relation(aux_node, source, "pred.arg.2")
+    elif aux_node_label in {"Parataxis", "List", "Expression"}:
+        lingua_graph.add_relation(aux_node, source, "func.arg")
+        lingua_graph.add_relation(aux_node, target, "func.arg")
+    else:
+        raise Exception(f"Unsupported residual aux edge: {aux_label}")
+
+    rewire_node = rewire_from or source
+    for parent, edge in list(lingua_graph.parents(rewire_node)):
+        if parent == aux_node:
+            continue
+        confidence = edge.confidence
+        label = edge.label
+        lingua_graph.remove_relation(parent, rewire_node)
+        lingua_graph.add_relation(parent, aux_node, label, confidence=confidence)
+
+    return aux_node
+
+
+def restore_remaining_aux_edges(lingua_graph: GPGraph):
+    """Consume residual symbolic word-lingua edges after aux-chain recovery."""
+
+    updated = False
+    for source, edge, target in list(lingua_graph.edges()):
+        edge_labels = split_edge_label(edge.label)
+        symbolic_labels = [label for label in edge_labels if label in symbol_edge2nodelabel]
+        if not symbolic_labels:
+            continue
+
+        remaining_labels = list(edge_labels)
+        for aux_label in symbolic_labels:
+            body_override = None
+            rewire_from = None
+            if aux_label == "@modification_of":
+                covering = _find_modification_covering(lingua_graph, source, target)
+                if covering is not None:
+                    body_override = covering
+                    rewire_from = covering
+
+            _add_aux_node_for_symbolic_edge(
+                lingua_graph,
+                source,
+                target,
+                aux_label,
+                body_override=body_override,
+                rewire_from=rewire_from,
+            )
+            remaining_labels.remove(aux_label)
+            updated = True
+
+        confidence = edge.confidence
+        if not lingua_graph.has_edge(source, target):
+            continue
+        lingua_graph.remove_relation(source, target)
+        if remaining_labels:
+            lingua_graph.add_relation(source, target, "+".join(remaining_labels), confidence=confidence)
+
+    return lingua_graph, updated
+
+
+def _single_child_for_label(lingua_graph: GPGraph, node: GPGNode, label: str) -> GPGNode | None:
+    children = edge2children(lingua_graph, node).get((label,), [])
+    if len(children) != 1:
+        return None
+    return children[0]
+
+
+def restore_whether_scope_around_aux_nodes(lingua_graph: GPGraph):
+    updated = False
+
+    for whether_node in list(lingua_graph.nodes()):
+        if not isinstance(whether_node, GPGAuxNode) or whether_node.label != "Whether":
+            continue
+
+        func_arg = _single_child_for_label(lingua_graph, whether_node, "func.arg")
+        if not isinstance(func_arg, GPGAuxNode):
+            continue
+
+        if func_arg.label in {"Attribute", "Copula", "Apposition"}:
+            pred_arg1 = _single_child_for_label(lingua_graph, func_arg, "pred.arg.1")
+            pred_arg2 = _single_child_for_label(lingua_graph, func_arg, "pred.arg.2")
+            if (
+                pred_arg2 is None
+                or not isinstance(pred_arg1, GPGAuxNode)
+                or pred_arg1.label != "Punctuation"
+            ):
+                continue
+
+            parents = list(lingua_graph.parents(whether_node))
+            if not any(
+                edge.label == "pred.arg.1"
+                and isinstance(parent, GPGAuxNode)
+                and parent.label == "Punctuation"
+                for parent, edge in parents
+            ):
+                continue
+
+            for parent, edge in parents:
+                confidence = edge.confidence
+                label = edge.label
+                lingua_graph.remove_relation(parent, whether_node)
+                lingua_graph.add_relation(parent, func_arg, label, confidence=confidence)
+
+            whether_edge = lingua_graph.get_edge(whether_node, func_arg)
+            pred_arg2_edge = lingua_graph.get_edge(func_arg, pred_arg2)
+            if whether_edge is None or pred_arg2_edge is None:
+                continue
+
+            whether_confidence = whether_edge.confidence
+            pred_arg2_confidence = pred_arg2_edge.confidence
+            lingua_graph.remove_relation(whether_node, func_arg)
+            lingua_graph.remove_relation(func_arg, pred_arg2)
+            lingua_graph.add_relation(func_arg, whether_node, "pred.arg.2", confidence=pred_arg2_confidence)
+            lingua_graph.add_relation(whether_node, pred_arg2, "func.arg", confidence=whether_confidence)
+            updated = True
+
+        elif func_arg.label == "Discourse":
+            discourse_body = _single_child_for_label(lingua_graph, func_arg, "body")
+            if discourse_body is None:
+                continue
+
+            parents = list(lingua_graph.parents(whether_node))
+            vocative_parents = [
+                parent
+                for parent, edge in parents
+                if edge.label == "variable"
+                and isinstance(parent, GPGAuxNode)
+                and parent.label == "Vocative"
+            ]
+            if not vocative_parents:
+                continue
+
+            for parent, edge in parents:
+                confidence = edge.confidence
+                label = edge.label
+                lingua_graph.remove_relation(parent, whether_node)
+                if parent in vocative_parents:
+                    lingua_graph.add_relation(parent, discourse_body, label, confidence=confidence)
+                else:
+                    lingua_graph.add_relation(parent, func_arg, label, confidence=confidence)
+
+            whether_edge = lingua_graph.get_edge(whether_node, func_arg)
+            body_edge = lingua_graph.get_edge(func_arg, discourse_body)
+            if whether_edge is None or body_edge is None:
+                continue
+
+            whether_confidence = whether_edge.confidence
+            body_confidence = body_edge.confidence
+            lingua_graph.remove_relation(whether_node, func_arg)
+            lingua_graph.remove_relation(func_arg, discourse_body)
+            lingua_graph.add_relation(func_arg, whether_node, "body", confidence=body_confidence)
+            lingua_graph.add_relation(whether_node, discourse_body, "func.arg", confidence=whether_confidence)
+            updated = True
+
+    return lingua_graph, updated
+
+
+def restore_vocative_variable_from_discourse_body(lingua_graph: GPGraph):
+    updated = False
+
+    for vocative_node in list(lingua_graph.nodes()):
+        if not isinstance(vocative_node, GPGAuxNode) or vocative_node.label != "Vocative":
+            continue
+
+        children = edge2children(lingua_graph, vocative_node)
+        variables = children.get(("variable",), [])
+        if len(variables) != 1:
+            continue
+
+        discourse_node = variables[0]
+        if not isinstance(discourse_node, GPGAuxNode) or discourse_node.label != "Discourse":
+            continue
+
+        discourse_children = edge2children(lingua_graph, discourse_node)
+        bodies = discourse_children.get(("body",), [])
+        if len(bodies) != 1:
+            continue
+
+        variable_target = bodies[0]
+        if not isinstance(variable_target, GPGAuxNode) or variable_target.label != "Whether":
+            continue
+        whether_children = edge2children(lingua_graph, variable_target)
+        func_args = whether_children.get(("func.arg",), [])
+        if len(func_args) != 1:
+            continue
+        variable_target = func_args[0]
+
+        variable_edge = lingua_graph.get_edge(vocative_node, discourse_node)
+        if variable_edge is None:
+            continue
+
+        confidence = variable_edge.confidence
+        lingua_graph.remove_relation(vocative_node, discourse_node)
+        lingua_graph.add_relation(vocative_node, variable_target, "variable", confidence=confidence)
+        updated = True
+
+    return lingua_graph, updated
+
+
 symbol_nodelabel2edge = {
     "Apposition":"@appositive_of",
     "Attribute":"@attribute_of",
@@ -207,6 +542,7 @@ symbol_nodelabel2edge = {
     "List":"@list",
     "Modification":"@modification_of",
     "Parataxis":"@parataxis",
+    "Punctuation":"@punctuation_of",
     "Ref":"@ref_of",
     "Vocative":"@vocative_of",
     "Whether":"@whether_of",
@@ -225,6 +561,7 @@ symbol_nodelabel2pos = {
     "List": "ListFunctor",
     "Modification": "ModificationalFunctor",
     "Parataxis": "ConjunctionalFunctor",
+    "Punctuation": "PunctuationalConstant",
     "Ref": "ReferentialPredicator",
     "Vocative": "ModificationalFunctor",
     "Whether": "GeneralFunctor",
@@ -254,8 +591,6 @@ def restore_whether_aux(lingua_graph: GPGraph, debug=False):
             updated = True
     
     return lingua_graph, updated
-
-import networkx as nx 
 
 def find_aux_chain(lingua_graph: GPGraph, target_node: GPGNode):
 
@@ -353,8 +688,13 @@ def lower_edge_to_node_hierarchy(lingua_graph: GPGraph, debug=False):
         elif len(aux_children) == 1:
             current_node.aux_hierarchy = [aux_children[0].ID]
         else:
+            aux_edge_labels_by_child = {
+                child.ID: split_edge_label(lingua_graph.get_edge(current_node, child).label)
+                for child in aux_children
+            }
             sub_graph = lingua_graph.subgraph(aux_children)
             hierarchy_graph = nx.DiGraph()
+            hierarchy_graph.add_nodes_from(child.ID for child in aux_children)
             # Convert to list before iterating to avoid 'dictionary changed size during iteration'
             for start, edge, end in list(sub_graph.edges()):
                 edge_labels = split_edge_label(edge.label)
@@ -375,8 +715,33 @@ def lower_edge_to_node_hierarchy(lingua_graph: GPGraph, debug=False):
                         lingua_graph.add_relation(start, end, remaining_edge_label, confidence=confidence)
                 else:
                     raise Exception(f"Unsupported edge label: {edge.label}")
-                
-            current_node.aux_hierarchy = list(nx.topological_sort(hierarchy_graph))
+
+            if hierarchy_graph.number_of_edges() == 0:
+                aux_labels = {
+                    label
+                    for labels in aux_edge_labels_by_child.values()
+                    for label in labels
+                    if label in symbol_edge2nodelabel
+                }
+                if aux_labels == {"@punctuation_of"}:
+                    restore_order = _punctuation_restore_order(current_node, aux_children)
+                    current_node.aux_hierarchy = [node.ID for node in reversed(restore_order)]
+                elif "@punctuation_of" in aux_labels:
+                    restore_order = _mixed_aux_restore_order(
+                        current_node,
+                        aux_children,
+                        aux_edge_labels_by_child,
+                    )
+                    current_node.aux_hierarchy = [node.ID for node in reversed(restore_order)]
+                else:
+                    current_node.aux_hierarchy = list(nx.topological_sort(hierarchy_graph))
+            else:
+                current_node.aux_hierarchy = _aux_hierarchy_topological_order(
+                    hierarchy_graph,
+                    current_node,
+                    aux_children,
+                    aux_edge_labels_by_child,
+                )
 
         if debug:
             logger.debug(
@@ -452,6 +817,15 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
                 for new_parent, new_edge_label in restore_reversed_edges_in_this_layer(lingua_graph, arg2, arg1):
                     parents_of_current_root.append(new_parent) 
                     #lingua_graph.add_relation(new_parent, aux_node, new_edge_label)
+            elif aux_node_label == "Punctuation":
+                assert len(nodes) == 1
+                punct = current_root
+                child = nodes[0]
+                lingua_graph.add_relation(aux_node, child, "pred.arg.1")
+                lingua_graph.add_relation(aux_node, punct, "pred.arg.2")
+                safe_remove_aux_relation(lingua_graph, visiting_node, child, symbol_nodelabel2edge[aux_node_label])
+                for new_parent, new_edge_label in restore_reversed_edges_in_this_layer(lingua_graph, punct, child):
+                    parents_of_current_root.append(new_parent)
                 
             elif aux_node_label in {"Parataxis", "List", "Expression"}:
 
@@ -522,11 +896,20 @@ def restore_aux_nodes(lingua_graph: GPGraph, debug=False):
                 edge_labels = split_edge_label(edge.label)
                 
                 lingua_graph.remove_relation(parent, current_root)
+                carry_duplicate_parent_edge = (
+                    idx < len(aux_chain) - 1
+                    and len(edge_labels) != len(set(edge_labels))
+                )
+                if carry_duplicate_parent_edge:
+                    lingua_graph.add_relation(parent, aux_node, edge.label)
+                    continue
+
                 lingua_graph.add_relation(parent, aux_node, edge_labels[0])
                 remaining_edge = "+".join(edge_labels[1:])
                 if remaining_edge:
                     lingua_graph.add_relation(parent, current_root, remaining_edge)
 
+            transfer_child_of_whether(current_root, aux_node)
             current_root = aux_node
 
             # visualizer = GPGraphVisualizer()
@@ -645,6 +1028,21 @@ def wordlingua2lingua(word_lingua_graph: GPGraph, debug=False):
         updated_any = updated_any or updated
         if debug and updated:
             debug_info["collapse_multi_word_nodes"] = copy.deepcopy(lingua_graph)
+
+        lingua_graph, updated = restore_whether_scope_around_aux_nodes(lingua_graph)
+        updated_any = updated_any or updated
+        if debug and updated:
+            debug_info["restore_whether_scope_around_aux_nodes"] = copy.deepcopy(lingua_graph)
+
+        lingua_graph, updated = restore_vocative_variable_from_discourse_body(lingua_graph)
+        updated_any = updated_any or updated
+        if debug and updated:
+            debug_info["restore_vocative_variable_from_discourse_body"] = copy.deepcopy(lingua_graph)
+
+        lingua_graph, updated = restore_remaining_aux_edges(lingua_graph)
+        updated_any = updated_any or updated
+        if debug and updated:
+            debug_info["restore_remaining_aux_edges"] = copy.deepcopy(lingua_graph)
 
         # Final Lingua graphs must not expose word-lingua hierarchy hints.
         lingua_graph, updated = strip_hierarchy_edge_components(lingua_graph)

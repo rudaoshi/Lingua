@@ -169,8 +169,8 @@ def test_train_schema_labels_are_valid():
 
     assert label_counts["nonsense"] == 0
     assert label_counts.get("as:nonsense", 0) == 0
-    assert aux_counts["Ref"] == 714
-    assert aux_counts["Modification"] == 5965
+    assert aux_counts["Ref"] == 715
+    assert aux_counts["Modification"] == 6039
 
 
 def test_aux_symbol_labels_match_required_node_types():
@@ -752,8 +752,8 @@ def test_train_aux_structures_have_required_edges():
                     example["sentence"],
                 )
 
-    assert aux_edge_counts["Ref"] == 714
-    assert aux_edge_counts["Modification"] == 5965
+    assert aux_edge_counts["Ref"] == 715
+    assert aux_edge_counts["Modification"] == 6039
 
 
 def test_numeric_colon_formats_use_expression_functors():

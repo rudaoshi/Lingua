@@ -553,13 +553,15 @@ Modification
   body -> that
 ```
 
-简化结构在无歧义时可接受：
+简化结构在无歧义时可接受：每个单叶子修饰体直接指向被修饰对象。
 
 ```text
-chair
-  as:modification -> wooden
-  as:modification -> old
-  as:modification -> that
+wooden
+  as:modification -> chair
+old
+  as:modification -> chair
+that
+  as:modification -> chair
 ```
 
 不可接受：
@@ -598,8 +600,12 @@ Modification
 | `variable` | 必须指向被修饰对象。 |
 | `body` | 必须指向修饰成分。 |
 | 层级 | 多个修饰语应按语义组合顺序形成层级。 |
-| 可简化 | 无歧义时可用直接 `as:modification`。 |
+| 可简化 | 只有 `body` 是单个叶子节点、且无歧义时，才可用直接 `as:modification`。 |
 | 不可过度简化 | 如果简化会导致 head 或 scope 不清，必须保留完整 `Modification`。 |
+
+`Modification(variable=H, body=B)` 与 `B --as:modification--> H` 不是无条件等价。只有当该 `Modification` 只含一条 `variable` 和一条 `body` 核心边，且 `B` 是没有任何 outgoing edge 的单个叶子节点时，才允许把它压平为直接 `as:modification`。若 `body` 本身有内部结构，例如介词/`to` 修饰结构、相对从句、分词短语、带标点关闭的局部 wrapper、`ExpressionFunctor`/`ListFunctor` 子图、谓词论元结构或另一个 `Modification`，必须保留显式 `Modification`，不得仅因表面上是修饰关系就压成 `as:modification`。
+
+若被压平的 `Modification` 原本被外部边引用，外部边必须重接到 `B`，而不是 `H`。因为压平后的等价子图是 `B --as:modification--> H`，其中 `B` 是能恢复整个修饰短语的局部 root；若外部边接到 `H`，`B` 会变成额外 root，图的单 root/DAG 约束会被破坏。
 
 错误类型：
 
@@ -1395,7 +1401,7 @@ p/PunctuationalConstant
 
 其中 `p` 的 `DESC(p)` 恢复被标点关闭的局部修饰体（如 `Now,`），`Modification` 才恢复“带标点的修饰体修饰 y”的外层关系。`as:discourse`、`as:vocative` 等同理：先恢复 `Discourse` / `Vocative` 等 aux node，再把局部标点 wrapper 放入 `body` 或对应局部成分位置。不得把局部逗号、引号、括号等直接作为整个外层关系的 root，除非该标点确实 close 整个外层关系。
 
-`as:*` 是 auxiliary relation 的压缩边。凡是出现 `A --as:*--> B`，`A` 的 outgoing edge 必须且只能是这一条 `as:*` 边；`A` 不得同时还有 `func.arg`、`pred.arg.*`、`variable`、`body`、`repeat`、`punctuation` 或第二条 `as:*` 子边。若 `A` 自身需要内部结构（如 `ExpressionFunctor` 还要连接 `func.arg`，标点 wrapper 还要 `as:punctuation` close 局部成分，或谓词仍有论元），不得使用压缩 `as:*`，必须显式恢复对应 aux node：例如用 `Modification(variable=B, body=A)` 表示带内部结构的 modifier，用 `Discourse(variable=core, body=context-wrapper)` 表示带局部 close punctuation 的 discourse/topic/header。压缩 `as:*` 只用于 source `A` 是无其他子节点的原子/叶子 wrapper 的情况。
+`as:*` 是 auxiliary relation 的压缩边。凡是出现 `A --as:*--> B`，`A` 的 outgoing edge 必须且只能是这一条 `as:*` 边；`A` 不得同时还有 `func.arg`、`pred.arg.*`、`variable`、`body`、`repeat`、`punctuation` 或第二条 `as:*` 子边。若 `A` 自身需要内部结构（如 `ExpressionFunctor` 还要连接 `func.arg`，标点 wrapper 还要 `as:punctuation` close 局部成分，或谓词仍有论元），不得使用压缩 `as:*`，必须显式恢复对应 aux node：例如用 `Modification(variable=B, body=A)` 表示带内部结构的 modifier，用 `Discourse(variable=core, body=context-wrapper)` 表示带局部 close punctuation 的 discourse/topic/header。压缩 `as:*` 只用于 source `A` 是无其他子节点的原子/叶子 wrapper 的情况；对应到 `Modification` 时，也就是只有 `body` 是单个叶子节点时，`Modification(variable=B, body=A)` 才可等价压成 `A --as:modification--> B`。
 
 判错：
 
@@ -1428,8 +1434,8 @@ was -> be
 对于简单、无歧义的修饰，可以接受：
 
 ```text
-chair
-  as:modification -> wooden
+wooden
+  as:modification -> chair
 ```
 
 代替完整：
@@ -1440,7 +1446,7 @@ Modification
   body -> wooden
 ```
 
-但复杂修饰、多个 scope、介词嵌套、相对从句等场景不能过度简化。
+但这种等价只适用于 `body` 是单个叶子节点的情况。复杂修饰、多个 scope、介词嵌套、相对从句、分词短语、带局部标点 wrapper 的修饰体、`Expression`/`List` 子图、谓词论元结构、或 `body` 本身已有 outgoing edge 的场景不能过度简化。
 
 ### 7.2.1 冗余 `Modification` 的判定与去除
 
