@@ -4,6 +4,8 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any
 
+from lingua.utils.normalization import normalize_lingua_edges_to_predicate_nodes
+
 
 @dataclass(frozen=True)
 class TokenLabel:
@@ -107,6 +109,7 @@ class HierarchicalOracleExample:
     words: tuple[str, ...]
     root_token_sets: tuple[tuple[int, ...], ...]
     units: tuple[HierarchicalOracleUnit, ...]
+    normalization_stats: dict[str, int]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -115,6 +118,7 @@ class HierarchicalOracleExample:
             "root_token_sets": [list(token_ids) for token_ids in self.root_token_sets],
             "unit_count": len(self.units),
             "edge_count": sum(len(unit.children) for unit in self.units),
+            "normalization_stats": dict(self.normalization_stats),
             "units": [unit.to_dict() for unit in self.units],
         }
 
@@ -128,6 +132,7 @@ def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExa
     """
 
     lingua, sentence = _coerce_lingua_sample(sample)
+    lingua, normalization_stats = normalize_lingua_edges_to_predicate_nodes(lingua)
     words = tuple(lingua.get("words", []))
     graph = lingua["graph"]
     nodes = graph["nodes"]
@@ -179,6 +184,7 @@ def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExa
         words=words,
         root_token_sets=tuple(desc_token_ids[index] for index in roots),
         units=tuple(units),
+        normalization_stats={str(key): int(value) for key, value in normalization_stats.items()},
     )
 
 

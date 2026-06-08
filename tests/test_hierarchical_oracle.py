@@ -85,6 +85,58 @@ def test_extracts_token_set_expansion_targets():
     assert labels_by_token(leaf_units[(2,)]) == {2: ["B-HEAD"]}
 
 
+def test_normalizes_as_modification_before_extracting_targets():
+    sample = {
+        "sentence": "saw red chair",
+        "lingua": {
+            "words": ["saw", "red", "chair"],
+            "graph": {
+                "nodes": [
+                    {"spans": [[0, 0]], "type": "FactualPredicator"},
+                    {"spans": [[2, 2]], "type": "NominalConstant"},
+                    {"spans": [[1, 1]], "type": "ModificationalConstant"},
+                ],
+                "edges": [
+                    {"start": 0, "end": 2, "label": "pred.arg.2"},
+                    {"start": 2, "end": 1, "label": "as:modification"},
+                ],
+            },
+        },
+    }
+
+    oracle = extract_hierarchical_oracle(sample).to_dict()
+
+    assert oracle["normalization_stats"]["reified_relation_edges:as:modification"] == 1
+    assert oracle["unit_count"] == 4
+    assert oracle["root_token_sets"] == [[0, 1, 2]]
+
+    root_unit = oracle["units"][0]
+    assert [
+        (child["role"], child["token_ids"], child["unit_kind"])
+        for child in root_unit["children"]
+    ] == [("ARG2", [1, 2], "Modification")]
+    assert labels_by_token(root_unit) == {
+        0: ["B-HEAD"],
+        1: ["B-ARG2"],
+        2: ["I-ARG2"],
+    }
+
+    modification_unit = next(
+        unit for unit in oracle["units"] if unit["unit_kind"] == "Modification"
+    )
+    assert labels_by_token(modification_unit) == {
+        1: ["B-BODY"],
+        2: ["B-VARIABLE"],
+    }
+    assert [
+        (child["role"], child["token_ids"], child["unit_kind"])
+        for child in modification_unit["children"]
+    ] == [
+        ("VARIABLE", [2], "NominalConstant"),
+        ("BODY", [1], "ModificationalConstant"),
+    ]
+
+
 def test_preserves_dag_sharing_as_shared_token_set_links():
     sample = {
         "lingua": {
