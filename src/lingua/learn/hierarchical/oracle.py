@@ -6,50 +6,60 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class NodeRef:
-    node_id: int
-    text: str
-    node_type: str
-    spans: Any
-    token_indices: tuple[int, ...]
-    is_aux: bool
+class TokenLabel:
+    token_id: int
+    token: str
+    labels: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "id": self.node_id,
-            "text": self.text,
-            "type": self.node_type,
-            "spans": self.spans,
-            "token_indices": list(self.token_indices),
-            "is_aux": self.is_aux,
+            "token_id": self.token_id,
+            "token": self.token,
+            "labels": list(self.labels),
         }
 
 
 @dataclass(frozen=True)
 class HierarchicalOracleChild:
-    edge_index: int
-    label: str
-    child: NodeRef
-    child_incoming_count: int
+    role: str
+    edge_label: str
+    token_ids: tuple[int, ...]
+    tokens: tuple[str, ...]
+    unit_kind: str
+    incoming_count: int
+    is_external: bool
+    is_discontinuous: bool
+
+    @property
+    def is_shared(self) -> bool:
+        return self.incoming_count > 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "edge_index": self.edge_index,
-            "label": self.label,
-            "child": self.child.to_dict(),
-            "child_incoming_count": self.child_incoming_count,
-            "child_is_shared": self.child_incoming_count > 1,
+            "role": self.role,
+            "edge_label": self.edge_label,
+            "token_ids": list(self.token_ids),
+            "tokens": list(self.tokens),
+            "text": _tokens_text(self.tokens),
+            "unit_kind": self.unit_kind,
+            "incoming_count": self.incoming_count,
+            "is_shared": self.is_shared,
+            "is_external": self.is_external,
+            "is_discontinuous": self.is_discontinuous,
         }
 
 
 @dataclass(frozen=True)
 class HierarchicalOracleUnit:
-    node: NodeRef
+    input_token_ids: tuple[int, ...]
+    input_tokens: tuple[str, ...]
+    unit_kind: str
     depth: int
     incoming_count: int
     is_root: bool
-    descendant_count: int
+    self_token_ids: tuple[int, ...]
     children: tuple[HierarchicalOracleChild, ...]
+    token_labels: tuple[TokenLabel, ...]
 
     @property
     def is_leaf(self) -> bool:
@@ -57,18 +67,37 @@ class HierarchicalOracleUnit:
 
     @property
     def has_shared_child(self) -> bool:
-        return any(child.child_incoming_count > 1 for child in self.children)
+        return any(child.is_shared for child in self.children)
+
+    @property
+    def has_external_child(self) -> bool:
+        return any(child.is_external for child in self.children)
+
+    @property
+    def has_overlapping_roles(self) -> bool:
+        return any(len(token_label.labels) > 1 for token_label in self.token_labels)
 
     def to_dict(self) -> dict[str, Any]:
+        shared_links = [child.to_dict() for child in self.children if child.is_shared]
+        external_links = [child.to_dict() for child in self.children if child.is_external]
         return {
-            "node": self.node.to_dict(),
+            "input_token_ids": list(self.input_token_ids),
+            "input_tokens": list(self.input_tokens),
+            "input_text": _tokens_text(self.input_tokens),
+            "unit_kind": self.unit_kind,
             "depth": self.depth,
             "incoming_count": self.incoming_count,
             "is_root": self.is_root,
             "decision": "leaf" if self.is_leaf else "expand",
-            "descendant_count": self.descendant_count,
+            "self_token_ids": list(self.self_token_ids),
+            "is_discontinuous": _is_discontinuous(self.input_token_ids),
             "has_shared_child": self.has_shared_child,
+            "has_external_child": self.has_external_child,
+            "has_overlapping_roles": self.has_overlapping_roles,
+            "token_labels": [token_label.to_dict() for token_label in self.token_labels],
             "children": [child.to_dict() for child in self.children],
+            "shared_links": shared_links,
+            "external_links": external_links,
         }
 
 
@@ -76,27 +105,26 @@ class HierarchicalOracleUnit:
 class HierarchicalOracleExample:
     sentence: str | None
     words: tuple[str, ...]
-    root_ids: tuple[int, ...]
+    root_token_sets: tuple[tuple[int, ...], ...]
     units: tuple[HierarchicalOracleUnit, ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "sentence": self.sentence,
             "words": list(self.words),
-            "root_ids": list(self.root_ids),
-            "node_count": len(self.units),
+            "root_token_sets": [list(token_ids) for token_ids in self.root_token_sets],
+            "unit_count": len(self.units),
             "edge_count": sum(len(unit.children) for unit in self.units),
             "units": [unit.to_dict() for unit in self.units],
         }
 
 
 def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExample:
-    """Extract one-layer recursive expansion targets from a gold Lingua graph.
+    """Extract recursive token-set labeling targets from a gold Lingua graph.
 
-    The oracle intentionally preserves the graph as a DAG: child nodes are
-    referenced by id and marked as shared when they have multiple incoming edges.
-    That keeps the representation useful for Lingua's compact `DESC(v)` style
-    instead of forcing a tree-shaped constituency target.
+    Each unit is represented by the token set covered by `DESC(v)`. The target for
+    one layer is a unit-kind label plus BIO role labels over that token set. Gold
+    graph node indices are used only internally to recover the layer structure.
     """
 
     lingua, sentence = _coerce_lingua_sample(sample)
@@ -108,35 +136,48 @@ def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExa
     incoming_count, outgoing = _index_edges(nodes, edges)
     roots = tuple(index for index, count in enumerate(incoming_count) if count == 0)
     topological_order, depths = _topological_order(nodes, edges, incoming_count)
-    node_refs = tuple(_node_ref(index, node, words) for index, node in enumerate(nodes))
-    descendant_counts = _descendant_counts(len(nodes), outgoing)
+    self_token_ids = tuple(_token_indices(node["spans"]) for node in nodes)
+    desc_token_ids = _descendant_token_ids(len(nodes), outgoing, self_token_ids, topological_order)
 
     units = []
     for node_index in topological_order:
+        input_token_ids = desc_token_ids[node_index]
+        input_tokens = _tokens_for_ids(words, input_token_ids)
         children = tuple(
-            HierarchicalOracleChild(
-                edge_index=edge_index,
-                label=edge["label"],
-                child=node_refs[int(edge["end"])],
-                child_incoming_count=incoming_count[int(edge["end"])],
+            _child_from_edge(
+                edge=edge,
+                words=words,
+                nodes=nodes,
+                incoming_count=incoming_count,
+                input_token_ids=input_token_ids,
+                desc_token_ids=desc_token_ids,
             )
-            for edge_index, edge in outgoing[node_index]
+            for _, edge in outgoing[node_index]
+        )
+        token_labels = _token_labels(
+            words=words,
+            input_token_ids=input_token_ids,
+            self_token_ids=self_token_ids[node_index],
+            children=children,
         )
         units.append(
             HierarchicalOracleUnit(
-                node=node_refs[node_index],
+                input_token_ids=input_token_ids,
+                input_tokens=input_tokens,
+                unit_kind=_unit_kind(nodes[node_index]),
                 depth=depths[node_index],
                 incoming_count=incoming_count[node_index],
                 is_root=node_index in roots,
-                descendant_count=descendant_counts[node_index],
+                self_token_ids=self_token_ids[node_index],
                 children=children,
+                token_labels=token_labels,
             )
         )
 
     return HierarchicalOracleExample(
         sentence=sentence,
         words=words,
-        root_ids=roots,
+        root_token_sets=tuple(desc_token_ids[index] for index in roots),
         units=tuple(units),
     )
 
@@ -196,41 +237,104 @@ def _topological_order(
     return tuple(order), tuple(depths)
 
 
-def _descendant_counts(
+def _descendant_token_ids(
     node_count: int,
     outgoing: dict[int, list[tuple[int, dict[str, Any]]]],
-) -> tuple[int, ...]:
-    counts = []
-    for start in range(node_count):
-        seen = set()
-        stack = [int(edge["end"]) for _, edge in outgoing[start]]
-        while stack:
-            node_index = stack.pop()
-            if node_index in seen:
-                continue
-            seen.add(node_index)
-            stack.extend(int(edge["end"]) for _, edge in outgoing[node_index])
-        counts.append(len(seen))
-    return tuple(counts)
+    self_token_ids: tuple[tuple[int, ...], ...],
+    topological_order: tuple[int, ...],
+) -> tuple[tuple[int, ...], ...]:
+    desc_sets = [set(tokens) for tokens in self_token_ids]
+    for node_index in reversed(topological_order):
+        for _, edge in outgoing[node_index]:
+            desc_sets[node_index].update(desc_sets[int(edge["end"])])
+    return tuple(tuple(sorted(desc_sets[index])) for index in range(node_count))
 
 
-def _node_ref(index: int, node: dict[str, Any], words: tuple[str, ...]) -> NodeRef:
+def _child_from_edge(
+    edge: dict[str, Any],
+    words: tuple[str, ...],
+    nodes: list[dict[str, Any]],
+    incoming_count: list[int],
+    input_token_ids: tuple[int, ...],
+    desc_token_ids: tuple[tuple[int, ...], ...],
+) -> HierarchicalOracleChild:
+    child_index = int(edge["end"])
+    token_ids = desc_token_ids[child_index]
+    input_token_set = set(input_token_ids)
+    return HierarchicalOracleChild(
+        role=_role_from_edge_label(edge["label"]),
+        edge_label=edge["label"],
+        token_ids=token_ids,
+        tokens=_tokens_for_ids(words, token_ids),
+        unit_kind=_unit_kind(nodes[child_index]),
+        incoming_count=incoming_count[child_index],
+        is_external=any(token_id not in input_token_set for token_id in token_ids),
+        is_discontinuous=_is_discontinuous(token_ids),
+    )
+
+
+def _token_labels(
+    words: tuple[str, ...],
+    input_token_ids: tuple[int, ...],
+    self_token_ids: tuple[int, ...],
+    children: tuple[HierarchicalOracleChild, ...],
+) -> tuple[TokenLabel, ...]:
+    labels_by_token: dict[int, list[str]] = defaultdict(list)
+    input_token_set = set(input_token_ids)
+
+    _add_bio_labels(labels_by_token, self_token_ids, input_token_set, "HEAD")
+    for child in children:
+        _add_bio_labels(labels_by_token, child.token_ids, input_token_set, child.role)
+
+    return tuple(
+        TokenLabel(
+            token_id=token_id,
+            token=words[token_id] if token_id < len(words) else "",
+            labels=tuple(sorted(set(labels_by_token.get(token_id, ["O"])))),
+        )
+        for token_id in input_token_ids
+    )
+
+
+def _add_bio_labels(
+    labels_by_token: dict[int, list[str]],
+    token_ids: tuple[int, ...],
+    input_token_set: set[int],
+    role: str,
+) -> None:
+    previous_token_id = None
+    for token_id in sorted(token_id for token_id in token_ids if token_id in input_token_set):
+        prefix = "I" if previous_token_id is not None and token_id == previous_token_id + 1 else "B"
+        labels_by_token[token_id].append(f"{prefix}-{role}")
+        previous_token_id = token_id
+
+
+def _unit_kind(node: dict[str, Any]) -> str:
     spans = node["spans"]
-    token_indices = _token_indices(spans)
-    if token_indices:
-        text = " ".join(words[token_index] for token_index in token_indices if token_index < len(words))
-    elif isinstance(spans, str):
-        text = spans
-    else:
-        text = ""
+    if isinstance(spans, str):
+        return spans
+    return node["type"]
 
-    return NodeRef(
-        node_id=index,
-        text=text,
-        node_type=node["type"],
-        spans=spans,
-        token_indices=tuple(token_indices),
-        is_aux=isinstance(spans, str),
+
+def _role_from_edge_label(edge_label: str) -> str:
+    if edge_label.startswith("as:"):
+        return "AS_" + _role_from_edge_label(edge_label[3:])
+
+    explicit_roles = {
+        "pred.arg.1": "ARG1",
+        "pred.arg.2": "ARG2",
+        "pred.arg.3": "ARG3",
+        "pred.arg.4": "ARG4",
+        "func.arg": "FUNC_ARG",
+    }
+    if edge_label in explicit_roles:
+        return explicit_roles[edge_label]
+
+    return (
+        edge_label.replace(".", "_")
+        .replace(":", "_")
+        .replace("-", "_")
+        .upper()
     )
 
 
@@ -246,3 +350,18 @@ def _token_indices(spans: Any) -> tuple[int, ...]:
             raise ValueError(f"Invalid reversed span: {span}")
         token_indices.extend(range(start, end + 1))
     return tuple(token_indices)
+
+
+def _tokens_for_ids(words: tuple[str, ...], token_ids: tuple[int, ...]) -> tuple[str, ...]:
+    return tuple(words[token_id] if token_id < len(words) else "" for token_id in token_ids)
+
+
+def _tokens_text(tokens: tuple[str, ...]) -> str:
+    return " ".join(token.strip() for token in tokens if token.strip())
+
+
+def _is_discontinuous(token_ids: tuple[int, ...]) -> bool:
+    if len(token_ids) <= 1:
+        return False
+    sorted_ids = sorted(token_ids)
+    return any(right != left + 1 for left, right in zip(sorted_ids, sorted_ids[1:]))

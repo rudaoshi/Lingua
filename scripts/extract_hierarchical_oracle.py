@@ -74,7 +74,7 @@ def main() -> int:
                     "sample_id": sample_id,
                     "sentence": oracle["sentence"],
                     "words": oracle["words"],
-                    "root_ids": oracle["root_ids"],
+                    "root_token_sets": oracle["root_token_sets"],
                 }
                 for unit_index, unit in enumerate(oracle["units"]):
                     row = {**base, "unit_index": unit_index, "unit": unit}
