@@ -294,7 +294,7 @@ def test_normalize_lingua_edges_to_predicate_nodes_folds_as_modification_chain_t
     assert_only_standardized_edges(normalized)
 
 
-def test_normalize_lingua_edges_to_predicate_nodes_folds_punctuation_under_modification():
+def test_normalize_lingua_edges_to_predicate_nodes_wraps_modification_with_punctuation():
     graph = {
         "meta": {},
         "words": ["red", "chair", "."],
@@ -314,18 +314,18 @@ def test_normalize_lingua_edges_to_predicate_nodes_folds_punctuation_under_modif
     normalized, stats = normalize_lingua_edges_to_predicate_nodes(graph)
 
     assert stats["reified_relation_edges"] == 2
-    assert stats["folded_as_relation_bodies"] == 1
+    assert stats.get("folded_as_relation_bodies", 0) == 0
     assert normalized["graph"]["nodes"][3:] == [
         {"spans": "Modification", "type": "ModificationalFunctor"},
         {"spans": "Punctuation", "type": "PunctuationalConstant"},
     ]
     assert normalized["graph"]["edges"] == [
         {"start": 3, "end": 1, "label": "variable"},
-        {"start": 3, "end": 4, "label": "body"},
-        {"start": 4, "end": 0, "label": "pred.arg.1"},
+        {"start": 3, "end": 0, "label": "body"},
+        {"start": 4, "end": 3, "label": "pred.arg.1"},
         {"start": 4, "end": 2, "label": "pred.arg.2"},
     ]
-    assert root_indices(normalized) == [3]
+    assert root_indices(normalized) == [4]
     assert_only_standardized_edges(normalized)
 
 

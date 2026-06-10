@@ -125,6 +125,9 @@ def main() -> int:
         dropout=args.dropout,
         pad_id=vocab.pad_id,
         num_decisions=len(vocab.decision2id),
+        num_view_kinds=len(vocab.view_kind2id),
+        num_query_roles=len(vocab.query_role2id),
+        num_shared_roles=len(vocab.shared_role2id),
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
@@ -218,6 +221,9 @@ def save_run_config(
         "num_dev_units": len(dev_examples),
         "num_test_units": len(test_examples),
         "vocab_size": len(vocab.word2id),
+        "num_view_kinds": len(vocab.view_kind2id),
+        "num_query_roles": len(vocab.query_role2id),
+        "num_shared_roles": len(vocab.shared_role2id),
         "num_unit_pos": len(vocab.unit_pos2id),
         "num_aux_kinds": len(vocab.aux_kind2id),
         "num_role_labels": len(vocab.role_label2id),

@@ -20,13 +20,13 @@ DATA_PATHS = [
     ROOT / "data" / "test.jsonl",
 ]
 RELATIVE_REF_ARG2_WRAPPED_MARKERS = {
-    "that",
     "which",
     "who",
     "whom",
     "whose",
 }
 RELATIVE_REF_ARG2_DIRECT_ADVERBS = {
+    "that",
     "when",
     "where",
 }
@@ -170,7 +170,7 @@ def test_train_schema_labels_are_valid():
     assert label_counts["nonsense"] == 0
     assert label_counts.get("as:nonsense", 0) == 0
     assert aux_counts["Ref"] == 715
-    assert aux_counts["Modification"] == 6039
+    assert aux_counts["Modification"] == 6695
 
 
 def test_aux_symbol_labels_match_required_node_types():
@@ -209,7 +209,7 @@ def test_func_arg_symbol_wrappers_are_not_unary():
             )
 
 
-def test_compound_hyphens_are_not_punctuation_modification_bodies():
+def test_prefix_hyphen_modification_bodies_close_left_part():
     blocked_right_types = {
         "FactualPredicator",
         "LogicalPredicator",
@@ -223,10 +223,8 @@ def test_compound_hyphens_are_not_punctuation_modification_bodies():
         nodes = graph["nodes"]
         words = example["lingua"]["words"]
         outgoing = defaultdict(list)
-        incoming = defaultdict(list)
         for graph_edge in graph["edges"]:
             outgoing[graph_edge["start"]].append(graph_edge)
-            incoming[graph_edge["end"]].append(graph_edge)
 
         for edge in graph["edges"]:
             source = nodes[edge["start"]]
@@ -244,33 +242,35 @@ def test_compound_hyphens_are_not_punctuation_modification_bodies():
                 for child_edge in outgoing[edge["start"]]
                 if child_edge["label"] == "variable"
             ]
+            if len(variable_edges) != 1:
+                continue
+
+            right = nodes[variable_edges[0]["end"]]
+            hyphen_bounds = node_span_bounds(target)
+            right_bounds = node_span_bounds(right)
+            if not (hyphen_bounds and right_bounds):
+                continue
+            if hyphen_bounds[0] >= right_bounds[0]:
+                continue
+            if right["type"] in blocked_right_types:
+                continue
             close_edges = [
                 child_edge
                 for child_edge in outgoing[edge["end"]]
                 if child_edge["label"] == "as:punctuation"
             ]
-            if len(variable_edges) != 1 or len(close_edges) != 1:
-                continue
-
-            right = nodes[variable_edges[0]["end"]]
+            assert len(close_edges) == 1, (
+                filename,
+                line_number,
+                edge,
+                variable_edges[0],
+                example["sentence"],
+            )
             left = nodes[close_edges[0]["end"]]
             left_bounds = node_span_bounds(left)
-            hyphen_bounds = node_span_bounds(target)
-            right_bounds = node_span_bounds(right)
-            if not (left_bounds and hyphen_bounds and right_bounds):
+            if not left_bounds or left["type"] in {"PunctuationalConstant", "SymbolConstant"}:
                 continue
-            is_ordered_compound = left_bounds[1] < hyphen_bounds[0] < right_bounds[0]
-            has_punctuation_parent = any(
-                nodes[parent_edge["start"]]["type"] == "PunctuationalConstant"
-                and parent_edge["label"] == "as:punctuation"
-                for parent_edge in incoming[edge["start"]]
-            )
-            assert not (
-                is_ordered_compound
-                and right["type"] not in blocked_right_types
-                and left["type"] not in {"PunctuationalConstant", "SymbolConstant"}
-                and not has_punctuation_parent
-            ), (
+            assert left_bounds[1] < hyphen_bounds[0] < right_bounds[0], (
                 filename,
                 line_number,
                 edge,
@@ -342,6 +342,23 @@ def test_redundant_modification_artifacts_are_absent():
                 node_index,
                 variable_index,
                 body_index,
+                example["sentence"],
+            )
+
+
+def test_modification_aux_nodes_do_not_emit_modification_edges():
+    for filename, line_number, example in iter_lingua_examples():
+        graph = example["lingua"]["graph"]
+        nodes = graph["nodes"]
+
+        for edge in graph["edges"]:
+            source = nodes[edge["start"]]
+            if source["spans"] != "Modification":
+                continue
+            assert edge["label"] != "modification", (
+                filename,
+                line_number,
+                edge,
                 example["sentence"],
             )
 
@@ -687,7 +704,8 @@ def test_train_graphs_are_single_rooted_dags():
         assert len(reachable) == len(nodes), (line_number, example["sentence"])
         assert_acyclic(adjacency)
 
-    assert root_type_counts["PunctuationalConstant"] == 9459
+    assert root_type_counts["PunctuationalConstant"] == 9194
+    assert root_type_counts["GeneralFunctor"] == 268
 
 
 def test_eval_graphs_are_single_rooted_dags():
@@ -753,7 +771,7 @@ def test_train_aux_structures_have_required_edges():
                 )
 
     assert aux_edge_counts["Ref"] == 715
-    assert aux_edge_counts["Modification"] == 6039
+    assert aux_edge_counts["Modification"] == 6695
 
 
 def test_numeric_colon_formats_use_expression_functors():
@@ -848,3 +866,110 @@ def test_punctuation_close_wrappers_are_not_plain_punctuation_children():
                 outgoing[node_index],
                 example["sentence"],
             )
+
+
+def test_question_punctuation_does_not_wrap_whether():
+    for filename, line_number, example in iter_lingua_examples():
+        graph = example["lingua"]["graph"]
+        words = example["lingua"]["words"]
+        nodes = graph["nodes"]
+        incoming_close_punctuation = defaultdict(list)
+
+        for edge in graph["edges"]:
+            if edge["label"] == "as:punctuation":
+                incoming_close_punctuation[edge["end"]].append(edge)
+
+        for whether_index, node in enumerate(nodes):
+            if node["spans"] != "Whether":
+                continue
+
+            stack = [whether_index]
+            seen = set()
+            while stack:
+                target_index = stack.pop()
+                if target_index in seen:
+                    continue
+                seen.add(target_index)
+                for edge in incoming_close_punctuation.get(target_index, []):
+                    punctuation_index = edge["start"]
+                    punctuation_node = nodes[punctuation_index]
+                    if punctuation_node["type"] != "PunctuationalConstant":
+                        continue
+                    assert "?" not in node_text(punctuation_node, words), (
+                        filename,
+                        line_number,
+                        whether_index,
+                        punctuation_index,
+                        edge,
+                        example["sentence"],
+                    )
+                    stack.append(punctuation_index)
+
+
+def test_whether_question_punctuation_children_are_wrappers_not_leaves():
+    question_wrapper_count = 0
+
+    for filename, line_number, example in iter_lingua_examples():
+        graph = example["lingua"]["graph"]
+        words = example["lingua"]["words"]
+        nodes = graph["nodes"]
+        outgoing = defaultdict(list)
+
+        for edge in graph["edges"]:
+            outgoing[edge["start"]].append(edge)
+
+        for whether_index, node in enumerate(nodes):
+            if node["spans"] != "Whether":
+                continue
+            for edge in outgoing.get(whether_index, []):
+                child = nodes[edge["end"]]
+                if child["type"] != "PunctuationalConstant":
+                    continue
+                assert edge["label"] == "func.arg", (
+                    filename,
+                    line_number,
+                    whether_index,
+                    edge,
+                    example["sentence"],
+                )
+                chain_has_question = False
+                punctuation_index = edge["end"]
+                seen = set()
+                while nodes[punctuation_index]["type"] == "PunctuationalConstant":
+                    assert punctuation_index not in seen, (
+                        filename,
+                        line_number,
+                        whether_index,
+                        punctuation_index,
+                        example["sentence"],
+                    )
+                    seen.add(punctuation_index)
+                    chain_has_question = chain_has_question or "?" in node_text(
+                        nodes[punctuation_index], words
+                    )
+                    child_close_edges = [
+                        child_edge
+                        for child_edge in outgoing.get(punctuation_index, [])
+                        if child_edge["label"] == "as:punctuation"
+                    ]
+                    assert len(child_close_edges) == 1, (
+                        filename,
+                        line_number,
+                        whether_index,
+                        punctuation_index,
+                        child_close_edges,
+                        example["sentence"],
+                    )
+                    punctuation_index = child_close_edges[0]["end"]
+
+                assert nodes[punctuation_index]["spans"] != "Whether", (
+                    filename,
+                    line_number,
+                    whether_index,
+                    punctuation_index,
+                    example["sentence"],
+                )
+                if chain_has_question:
+                    question_wrapper_count += 1
+
+    assert question_wrapper_count == 318

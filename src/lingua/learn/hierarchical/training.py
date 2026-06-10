@@ -68,7 +68,14 @@ def train_one_epoch(
     for batch in dataloader:
         batch = move_batch_to_device(batch, device)
         optimizer.zero_grad()
-        output = model(batch["word_ids"], batch["attention_mask"], batch["unit_mask"])
+        output = model(
+            batch["word_ids"],
+            batch["attention_mask"],
+            batch["unit_mask"],
+            batch["view_kind"],
+            batch["query_role_ids"],
+            batch["shared_role_ids"],
+        )
         losses = compute_hierarchical_loss(
             output,
             batch,
@@ -111,7 +118,14 @@ def evaluate_hierarchical_model(
 
     for batch in dataloader:
         batch = move_batch_to_device(batch, device)
-        output = model(batch["word_ids"], batch["attention_mask"], batch["unit_mask"])
+        output = model(
+            batch["word_ids"],
+            batch["attention_mask"],
+            batch["unit_mask"],
+            batch["view_kind"],
+            batch["query_role_ids"],
+            batch["shared_role_ids"],
+        )
 
         unit_pos_pred = output["unit_pos_logits"].argmax(dim=-1)
         aux_kind_pred = output["aux_kind_logits"].argmax(dim=-1)
@@ -119,7 +133,12 @@ def evaluate_hierarchical_model(
         role_scores = torch.sigmoid(output["role_logits"])
         role_pred = role_scores >= threshold
         if force_one_role_per_unit_token and role_scores.size(-1) > 0:
-            no_role_pred = ~role_pred.any(dim=-1) & batch["unit_mask"]
+            force_role_per_token = batch.get("force_role_per_token")
+            if force_role_per_token is None:
+                force_mask = batch["unit_mask"]
+            else:
+                force_mask = batch["unit_mask"] & force_role_per_token.unsqueeze(1)
+            no_role_pred = ~role_pred.any(dim=-1) & force_mask
             best_role = role_scores.argmax(dim=-1)
             role_pred = role_pred.clone()
             role_pred[no_role_pred, best_role[no_role_pred]] = True

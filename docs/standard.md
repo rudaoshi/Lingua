@@ -986,6 +986,21 @@ because/LogicalPredicator
 5. 句首位置本身不改变连接词的语义功能。`And`、`But`、`So`、`Or`、`However` 等若仍承担并列、转折、因果、结论或选择关系，应尽量按其本意标为 `ConjunctionalFunctor` 或 `LogicalPredicator`，不得仅因位于句首、左侧论元在样本外或只显式出现一侧内容而改标为普通 `ModificationalConstant` / `as:modification`。
 6. 外部或隐含论元不应为了凑二元结构而臆造；但显式可见的论元方向必须按句法功能放对。`because/if/although/though/when/while/unless/until/before/after/since/as soon as/so that` 等引导的从句作 `pred.arg.2`，主句作 `pred.arg.1`，不随语序变化。`so as to` 属于目的复合修饰引导词，按 `in order to` 一类 `ModificationalFunctor` 处理，不进入本条 `LogicalPredicator` 规则。`A so/therefore/thus B`、`A but/however B` 这类非从属连接不应分析为 “B 是主句、A 是从句”；通常以前文或左侧未标记命题 `A` 为 `pred.arg.1`，以连接词标记的后项 / 当前命题 `B` 为 `pred.arg.2`。若句首 `So/Therefore/Thus/But/However` 只有当前命题显式出现，不臆造外部前项，当前命题仍按连接词标记的一侧保留为 `pred.arg.2`。
 7. `Whether` symbol node 只用于极性疑问、whether-clause 或“是否”类内容从句，类型必须是 `GeneralFunctor`，其子边为 `func.arg`。条件、因果、让步、时间等命题关系不得用 `Whether<LogicalPredicator>` 表示；应使用句面存在的 `if`、`because`、`should` 条件倒装 marker 等 lexical `LogicalPredicator`，按第 4-6 条确定 `pred.arg.1` / `pred.arg.2`。
+   - `Whether` 是外层极性 / 是否 scope wrapper，不替代被询问的命题结构。`Whether.func.arg` 应指向可恢复的内部命题、短语或片段 root；该内部 root 仍按自身语义标为 `FactualPredicator`、`LogicalPredicator`、`Modification`、`Conjunction`、`NominalConstant` 等。因此在层级训练样本中，`Whether` 节点和它的 `func.arg` 子节点可以拥有完全相同的 token span；这是一组父子层级监督，不是同一 surface 的标注冲突。
+   - 一般疑问 / 极性问句中若有显式问号，`Whether` 是问号的顶层结构，而问号仍必须作为 punctuation wrapper close 被询问的内部命题；不得把问号降成没有子边的 leaf。标准写法是 `Whether --func.arg--> ?/PunctuationalConstant`，再由 `? --as:punctuation--> 内部命题` 恢复问号关闭的内容；不得写成 `? --as:punctuation--> Whether`，也不得写成 `Whether --punctuation--> ?`。例如 `Are you ready?` 应为：
+
+     ```text
+     Whether/GeneralFunctor
+       func.arg -> ?/PunctuationalConstant
+
+     ?/PunctuationalConstant
+       as:punctuation -> ready/FactualPredicator
+     ```
+
+   - 若句末标点是 `...?`、`??`、`!!!?`、`? "` 等包含问号的标点串，`Whether.func.arg` 应指向最外层 punctuation wrapper；标点之间继续用 `as:punctuation` 串联，最内层包含问号的 wrapper close 内部命题。问号在这里实现极性疑问 scope，但它仍是被询问内容的 close wrapper，不是 leaf。
+   - 直接 wh-question 不因为句末问号而额外创建 `Whether`。`what/who/which/whom/whose/where/when/why/how` 等显式 wh-word 自身应作为 lexical `GeneralFunctor` 进入从句内部结构；若它在相对从句中作论元或状语，按相对从句 / `Ref` 规则处理。
+   - 若极性疑问整体内部含有条件、因果、时间等 lexical logical marker，例如 `If X, would Y?`，外层可以是 `Whether.func.arg -> if/LogicalPredicator`，但 `if` 本身仍必须保留为 `LogicalPredicator`，不得被 `Whether` 吞掉。
+   - 省略式或片段式极性问句可以使用 `Whether` 包住片段 root，例如 `Europe?`、`Any suggestions?`、`Right?`，但片段 root 的 POS / 内部结构仍按普通标准标注。
 8. 只有当该词确实只是话语填充、语气组织、格式标记，且不表达并列、选择、转折、因果、条件、结论等事实关系时，才应标为 discourse / modification 类节点。
 
 错误：
@@ -1333,7 +1348,7 @@ Koichi Morita (army officer)
 
 1. 含有职称、角色、括号说明、地理限定或消歧义说明时，可用 `Attribute`、`Apposition`、`Modification` 或 discourse metadata 表示其对核心实体的限定；选择取决于该说明是身份属性、同位描述、地理限定、类型限定还是数据源消歧义。
 2. 逗号连接的地名/机构名如 `Jordan, New York`、`Beetham Tower, Manchester` 通常不是并列列表，而是 entity + location / qualifier；不能简单当作两个无关 list items。若该逗号只是地址格式 operator 且没有更具体的 head/qualifier 关系，可作为 `ExpressionFunctor`；若表达实体的地理限定，应保留限定关系。
-3. 表格/赛果/名单行中出现 `name ( country/team/role ) score`、`rank. name ( country ) result` 这类结构时，括号项是前一实体的限定属性，推荐 `Attribute(pred.arg.1=name, pred.arg.2=paren-wrapper)`；外层 `List` 应把这个 `Attribute` 作为一个 field，而不是把 `name` 与括号项拆成两个 sibling `func.arg`。只有括号项出现在行首、句内没有可恢复宿主，或括号内容是整行 note（如 `( halftime 2-0 )`、`( home team in CAPS )`）时，才不要强行挂到前一实体；整行 note 应包装整行结果或 header。
+3. 表格/赛果/名单行中出现 `name ( country/team/role ) score`、`rank. name ( country ) result` 这类结构时，括号项是前一实体的限定属性，应按 6.16 的 `A(B)` parenthetical pattern 建模：外层保留 `Modification(variable=name, body=paren-wrapper)` 表达括号整体修饰 name，括号 wrapper close 内部的 `Attribute` / `Apposition` / lexical relation。外层 `List` 应把这个能恢复 `name + 括号限定项` 的 wrapper/field 作为一个 field，而不是把 `name` 与括号项拆成两个 sibling `func.arg`。只有括号项出现在行首、句内没有可恢复宿主，或括号内容是整行 note（如 `( halftime 2-0 )`、`( home team in CAPS )`）时，才不要强行挂到前一实体；整行 note 应包装整行结果或 header。
 4. 如果专名或标题内部边界无法可靠判断，只要 token coverage 完整、root 可恢复整个名词性片段、没有添加未出现事实，可判为 acceptable variant 或 minor，不应直接判 major。但当内部中心词和修饰层级清楚时，误打平成无层级 `Expression` 会丢失 head/scope，应判为 `EntityStructure` / `Modification` 问题；当内部只是姓名、代码或标题组成时，误拆成 `Modification` 同样是结构错误。
 
 判错：
@@ -1375,10 +1390,32 @@ Koichi Morita (army officer)
 1. 若 `A: B`、`A - B`、`A -- B`、`A ... B` 中的标点能自然视为 `A` 的 close marker，则该标点应作为 `A` 的局部 wrapper：`p/PunctuationalConstant --as:punctuation--> A`，外层 `Parataxis` / `Apposition` / `Attribute` / `Discourse` 等关系再把 `p` 作为前项或对应论元。不得写成外层关系 `--punctuation--> p`，否则 `DESC(p)` 不能恢复被 close 的前项。
 2. 若括号、方括号、引号等 punctuation wrapper 的实际 close target 是 `B`，则 `p --as:punctuation--> B`，外层同位、属性、并置或修饰关系以 `p` 作为被 close 的括号项 / 引号项。不要仅凭表面标点数量臆造 scope；以实际 wrapper 节点和 `as:punctuation` 目标为准。
 3. 只有当标点确实属于整个外层关系、无法可靠归入某个局部成分，或只是非结构性装饰时，才可作为外层关系的普通 `punctuation` child。
+4. 一般疑问 / 极性问句的句末问号应在 `Whether` 之下、内部命题之上：使用 `Whether --func.arg--> ?` 与 `? --as:punctuation--> 内部命题`。不要使用 `? --as:punctuation--> Whether` 让问号成为整句 root，也不要使用 `Whether --punctuation--> ?` 让问号退化为 leaf；包含问号的复合句末标点同理保留 punctuation wrapper 链。
 
 核心判定：一旦存在 `p/PunctuationalConstant --as:punctuation--> child`，就表示 `p` 是 `child` 的 close wrapper，`DESC(p)` 才是“带标点关闭的 child”。若外层谓词、functor 或 aux relation 需要这个带标点关闭的局部成分，应让外层语义边（如 `pred.arg.*`、`func.arg`、`variable`、`body`、`as:*` 展开后的对应边）指向 `p`，而不是只写成 `parent --punctuation--> p`。同一个 `p` 同时作为外层普通 `punctuation` child、又用 `as:punctuation` close 内部 `child`，通常是错误的双重身份；应改为外层关系指向 `p`，或在 `p` 已经有正确语义父边时删除冗余的 `parent --punctuation--> p`。
 
 若某个标点可以确定为 close 某个结构，该 `PunctuationalConstant` 应作为该结构的局部 root，并用 `as:punctuation` 指向被关闭的内容。close 的范围必须尽量精确：句尾标点若只关闭第二个分句，就应成为第二分句的 root，而不应上提为整句或外层 discourse relation 的 root。只有无法确定 close 范围、或标点只是非结构性装饰时，才可作为普通附着项处理。
+
+`A(B)` parenthetical pattern 的标准写法如下。若括号内容 `B` 是对左侧宿主 `A` 的补充、限定、说明、属性、同位、别名、分词/关系从句或短插入语，应保留一个外层 `Modification` 表达“括号结构整体修饰 A”：
+
+```text
+M/Modification
+  variable -> A
+  body -> P
+
+P/PunctuationalConstant("(" ")")
+  as:punctuation -> C
+```
+
+其中 `P` 是左右括号组成的 punctuation wrapper，`C` 是括号内完整语义关系的 root，`DESC(P)` 应恢复带括号关闭的 `C`。不得在同一个 `M` 下再添加 `M --modification--> C`；这会把“外层修饰包装”和“括号内语义关系”表达两次，并造成同一 token set 在层级学习中出现重复解码目标。
+
+`C` 的选择按以下顺序判定：
+
+1. 若 `B` 内部已有 lexical predicate / functor / relation node 能把 `A` 作为论元、变量或共享参数恢复出来，则 `C` 就是这个内部 root，不再额外插入 `Attribute`、`Apposition`、`Parataxis` 或第二层 `Modification`。例如 `A ( born 1976 )`、`A ( opened 2003 )`、`A ( completed 1997 )` 中，`born/opened/completed` 应直接以 `A` 为 `pred.arg.1`，日期/年份为 `pred.arg.2`，括号 wrapper `P --as:punctuation--> born/opened/completed`；不得把 `born 1976` 打成 `Expression`，也不得再用 `Attribute` 包一层。`a negative (representing positive liquidation)` 中，`representing` 已有 `pred.arg.1 -> a negative`，因此 `P --as:punctuation--> representing`，不再插 `Parataxis`。
+2. 若 `B` 本身只是属性值、别名、类型、国家/队伍/角色等，内部没有节点能表达它与 `A` 的关系，则创建合适的关系 root `C`，如 `Attribute`、`Apposition`、`Parataxis`、`Expression` 或 `List`。此时 `C` 负责连接 `A` 与 `B`，例如 `C.pred.arg.1 -> A`、`C.pred.arg.2 -> B_root`，再由 `P --as:punctuation--> C` close 这个完整关系。
+3. 若括号内容是整句 note、前置说明、表格 header 说明或没有明确左侧宿主的补充，不强行套到最近的 `A`；应按整行/整句的 discourse、list、attribute、expression 或普通谓词结构建模。
+
+因此，`A(B)` 的外层 `Modification` 与括号内 `C` 不是二选一：`M` 表达“这个带括号的补充结构修饰 A”，`C` 表达括号内容内部如何解析。层级学习或解码时，第一次查询某个 token/node set 使用 `default` mode，输出上层 `Modification` / `Whether` 等 wrapper；若后续需要展开某个 `DESC(child)` 与当前输入 token/node set 相同的 child，则统一使用 `content` mode，不再区分 `content:2` 等深度编号。该 content 查询必须复用父层预测边体系作为输入上下文：child 覆盖的 token 填入其父边角色（如 `body`、`func.arg`），与 sibling 共享的 token 另标其父层共享角色（如 `variable`、`pred.arg.1`）。这样同一 token set 的 wrapper view 与 content view 由父层 query context 区分，不应被视为标注冲突，也不需要在正式边体系中新增 `*_REF` 边。
 
 当一个节点用 `as:*` 反向边压缩表达某个关系，同时该节点还带有局部标点时，应区分“关系整体的 root”和“被标点 close 的局部成分”。若标点只关闭该节点本身所代表的局部成分，而不是关闭整个外层关系，则应优先恢复对应 aux node，并让标点作为局部 wrapper 进入 aux 的相应论元位置：
 

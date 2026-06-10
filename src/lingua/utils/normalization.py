@@ -22,6 +22,19 @@ RELATION_EDGE_TO_AUX_NODE = {
     "repeat": ("Repeat", "OtherConstant"),
     "vocative": ("Vocative", "ModificationalFunctor"),
 }
+AS_RELATION_PRIORITIES = {
+    "appositive": 41,
+    "discourse": 42,
+    "ref": 43,
+    "repeat": 44,
+    "vocative": 45,
+    "nonsense": 46,
+    "parataxis": 47,
+    "index": 48,
+    "attribute": 49,
+    "modification": 50,
+    "punctuation": 51,
+}
 
 
 def is_core_predicate_edge(label: str) -> bool:
@@ -131,10 +144,17 @@ def normalize_lingua_edges_to_predicate_nodes(
         relation_index = relation_nodes[edge_index]
         start = int(edge["start"])
         end = int(edge["end"])
-        arg1 = end
+        arg1 = _projected_as_relation_target(
+            end,
+            edge_index,
+            original_edges,
+            relation_nodes,
+            outgoing_as_edges,
+        )
         arg2 = _lower_as_relation_root(
             start,
             edge_index,
+            original_edges,
             relation_nodes,
             incoming_as_edges,
             grouped_as_body_roots,
@@ -251,19 +271,53 @@ def _top_as_relation_root(
 
     edge_index = edge_indices[0]
     target = int(edges[edge_index]["end"])
-    upper_relation = _top_as_relation_root(
-        target,
+    upper_relation = None
+    target_edge_indices = outgoing_as_edges.get(target, [])
+    if (
+        len(target_edge_indices) == 1
+        and _as_relation_priority(edges[target_edge_indices[0]])
+        >= _as_relation_priority(edges[edge_index])
+    ):
+        upper_relation = _top_as_relation_root(
+            target,
+            edges,
+            relation_nodes,
+            outgoing_as_edges,
+            seen,
+        )
+    return upper_relation if upper_relation is not None else relation_nodes[edge_index]
+
+
+def _projected_as_relation_target(
+    node_index: int,
+    current_edge_index: int,
+    edges: list[dict[str, Any]],
+    relation_nodes: dict[int, int],
+    outgoing_as_edges: dict[int, list[int]],
+) -> int:
+    """Return a lower-level projection for an ``as:*`` relation target."""
+
+    edge_indices = outgoing_as_edges.get(node_index, [])
+    if len(edge_indices) != 1:
+        return node_index
+    lower_edge_index = edge_indices[0]
+    if _as_relation_priority(edges[lower_edge_index]) >= _as_relation_priority(
+        edges[current_edge_index]
+    ):
+        return node_index
+    projected = _top_as_relation_root(
+        node_index,
         edges,
         relation_nodes,
         outgoing_as_edges,
-        seen,
     )
-    return upper_relation if upper_relation is not None else relation_nodes[edge_index]
+    return projected if projected is not None else node_index
 
 
 def _lower_as_relation_root(
     node_index: int,
     current_edge_index: int,
+    edges: list[dict[str, Any]],
     relation_nodes: dict[int, int],
     incoming_as_edges: dict[int, list[int]],
     grouped_as_body_roots: dict[int, int],
@@ -278,6 +332,8 @@ def _lower_as_relation_root(
         edge_index
         for edge_index in incoming_as_edges.get(node_index, [])
         if edge_index != current_edge_index
+        and _as_relation_priority(edges[edge_index])
+        <= _as_relation_priority(edges[current_edge_index])
     ]
     if len(edge_indices) == 1:
         stats["folded_as_relation_bodies"] += 1
@@ -285,6 +341,12 @@ def _lower_as_relation_root(
     if len(edge_indices) > 1:
         stats["skipped_ambiguous_as_relation_body_folds"] += 1
     return node_index
+
+
+def _as_relation_priority(edge: dict[str, Any]) -> int:
+    label = str(edge["label"])
+    base_label = label[3:] if label.startswith("as:") else label
+    return AS_RELATION_PRIORITIES.get(base_label, 50)
 
 
 def standardize_lingua_edges_to_predicate_nodes(

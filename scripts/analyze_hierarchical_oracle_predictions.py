@@ -23,10 +23,11 @@ from lingua.learn.hierarchical.dataset import (
     HierarchicalOracleDataset,
     HierarchicalTrainingExample,
     HierarchicalVocab,
+    build_hierarchical_examples_from_oracle,
     collate_hierarchical_batch,
 )
 from lingua.learn.hierarchical.model import HierarchicalTokenSetParser
-from lingua.learn.hierarchical.oracle import NON_AUX_KIND, extract_hierarchical_oracle
+from lingua.learn.hierarchical.oracle import DEFAULT_VIEW, NON_AUX_KIND, extract_hierarchical_oracle
 from lingua.learn.hierarchical.training import move_batch_to_device, save_metrics
 
 
@@ -143,7 +144,7 @@ def main() -> int:
 
     vocab = HierarchicalVocab.load(vocab_path)
     model = build_model_from_checkpoint(checkpoint, vocab, merged_args).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(compatible_model_state_dict(checkpoint, model))
 
     splits = {
         "train": (train_path, args.max_train_samples, args.max_train_units),
@@ -221,27 +222,13 @@ def build_analysis_records(
             oracle = extract_hierarchical_oracle(sample).to_dict()
             words = tuple(str(word) for word in oracle["words"])
             root_token_sets = tuple(tuple(int(token_id) for token_id in item) for item in oracle["root_token_sets"])
+            examples = build_hierarchical_examples_from_oracle(sample_id, oracle)
 
-            for unit_index, unit in enumerate(oracle["units"]):
-                labels_by_token = tuple(
-                    (
-                        int(token_label["token_id"]),
-                        tuple(str(label) for label in token_label["labels"]),
-                    )
-                    for token_label in unit["token_labels"]
-                )
+            for example in examples:
+                unit = oracle["units"][example.unit_index]
                 records.append(
                     AnalysisRecord(
-                        example=HierarchicalTrainingExample(
-                            sample_id=sample_id,
-                            unit_index=unit_index,
-                            words=words,
-                            input_token_ids=tuple(int(token_id) for token_id in unit["input_token_ids"]),
-                            unit_pos=str(unit["unit_pos"]),
-                            aux_kind=str(unit["aux_kind"]),
-                            decision=str(unit["decision"]),
-                            role_labels_by_token=labels_by_token,
-                        ),
+                        example=example,
                         sentence=sample.get("sentence"),
                         words=words,
                         root_token_sets=root_token_sets,
@@ -313,14 +300,26 @@ def evaluate_split(
             cursor += batch_size_actual
 
             batch = move_batch_to_device(batch, device)
-            output = model(batch["word_ids"], batch["attention_mask"], batch["unit_mask"])
+            output = model(
+                batch["word_ids"],
+                batch["attention_mask"],
+                batch["unit_mask"],
+                batch["view_kind"],
+                batch["query_role_ids"],
+                batch["shared_role_ids"],
+            )
             unit_pos_pred = output["unit_pos_logits"].argmax(dim=-1).cpu()
             aux_kind_pred = output["aux_kind_logits"].argmax(dim=-1).cpu()
             decision_pred = output["decision_logits"].argmax(dim=-1).cpu()
             role_scores = torch.sigmoid(output["role_logits"])
             role_pred = role_scores >= threshold
             if force_one_role_per_unit_token and role_scores.size(-1) > 0:
-                no_role_pred = ~role_pred.any(dim=-1) & batch["unit_mask"]
+                force_role_per_token = batch.get("force_role_per_token")
+                if force_role_per_token is None:
+                    force_mask = batch["unit_mask"]
+                else:
+                    force_mask = batch["unit_mask"] & force_role_per_token.unsqueeze(1)
+                no_role_pred = ~role_pred.any(dim=-1) & force_mask
                 best_role = role_scores.argmax(dim=-1)
                 role_pred = role_pred.clone()
                 role_pred[no_role_pred, best_role[no_role_pred]] = True
@@ -475,11 +474,22 @@ def build_unit_prediction(
         "split": split_name,
         "sample_id": record.example.sample_id,
         "unit_index": record.example.unit_index,
+        "query_index": record.example.query_index,
+        "parent_unit_index": record.example.parent_unit_index,
         "sentence": record.sentence,
         "words": list(record.words),
         "root_token_sets": [list(token_ids) for token_ids in record.root_token_sets],
         "unit_features": unit_features(record.unit),
         "gold": {
+            "view_kind": record.example.view_kind,
+            "query_role_by_token": [
+                {"token_id": token_id, "role": role}
+                for token_id, role in record.example.query_role_by_token
+            ],
+            "shared_role_by_token": [
+                {"token_id": token_id, "roles": list(roles)}
+                for token_id, roles in record.example.shared_role_by_token
+            ],
             "unit_pos": record.example.unit_pos,
             "aux_kind": record.example.aux_kind,
             "decision": record.example.decision,
@@ -589,6 +599,7 @@ def update_breakdowns(
 ) -> None:
     features = prediction["unit_features"]
     keys = {
+        "view_kind": prediction["gold"]["view_kind"],
         "unit_pos": prediction["gold"]["unit_pos"],
         "aux_kind": prediction["gold"]["aux_kind"],
         "is_aux": str(prediction["gold"]["aux_kind"] != NON_AUX_KIND).lower(),
@@ -654,7 +665,26 @@ def build_model_from_checkpoint(
         dropout=dropout,
         pad_id=vocab.pad_id,
         num_decisions=len(vocab.decision2id),
+        num_view_kinds=len(vocab.view_kind2id),
+        num_query_roles=len(vocab.query_role2id),
+        num_shared_roles=len(vocab.shared_role2id),
     )
+
+
+def compatible_model_state_dict(
+    checkpoint: dict[str, Any],
+    model: HierarchicalTokenSetParser,
+) -> dict[str, torch.Tensor]:
+    state = dict(checkpoint["model_state_dict"])
+    model_state = model.state_dict()
+    for key in (
+        "view_kind_embedding.weight",
+        "query_role_embedding.weight",
+        "shared_role_embedding.weight",
+    ):
+        if key not in state:
+            state[key] = model_state[key].detach().cpu()
+    return state
 
 
 def load_checkpoint(path: Path, map_location: str | torch.device) -> dict[str, Any]:
