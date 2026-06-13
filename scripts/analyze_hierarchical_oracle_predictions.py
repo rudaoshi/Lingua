@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = REPO_ROOT / "src"
 DEFAULT_DATA_DIR = REPO_ROOT / "data"
+DEFAULT_UD_UPOS_DIR = DEFAULT_DATA_DIR
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
@@ -25,10 +26,15 @@ from lingua.learn.hierarchical.dataset import (
     HierarchicalVocab,
     build_hierarchical_examples_from_oracle,
     collate_hierarchical_batch,
+    load_ud_upos_by_line,
 )
 from lingua.learn.hierarchical.model import HierarchicalTokenSetParser
 from lingua.learn.hierarchical.oracle import DEFAULT_VIEW, NON_AUX_KIND, extract_hierarchical_oracle
-from lingua.learn.hierarchical.training import move_batch_to_device, save_metrics
+from lingua.learn.hierarchical.training import (
+    forward_hierarchical_model,
+    move_batch_to_device,
+    save_metrics,
+)
 
 
 @dataclass(frozen=True)
@@ -43,9 +49,9 @@ class AnalysisRecord:
 class MetricAccumulator:
     def __init__(self) -> None:
         self.total_units = 0
-        self.unit_pos_correct = 0
-        self.aux_kind_correct = 0
-        self.unit_identity_correct = 0
+        self.head_pos_correct = 0
+        self.head_aux_kind_correct = 0
+        self.head_identity_correct = 0
         self.decision_correct = 0
         self.unit_exact = 0
         self.role_tp = 0
@@ -68,9 +74,9 @@ class MetricAccumulator:
         role_token_total: int,
     ) -> None:
         self.total_units += 1
-        self.unit_pos_correct += int(pos_match)
-        self.aux_kind_correct += int(aux_match)
-        self.unit_identity_correct += int(pos_match and aux_match)
+        self.head_pos_correct += int(pos_match)
+        self.head_aux_kind_correct += int(aux_match)
+        self.head_identity_correct += int(pos_match and aux_match)
         self.decision_correct += int(decision_match)
         self.unit_exact += int(pos_match and aux_match and decision_match and unit_role_match)
         self.role_tp += role_tp
@@ -84,9 +90,9 @@ class MetricAccumulator:
         role_recall = self.role_tp / (self.role_tp + self.role_fn + 1e-8)
         role_f1 = 2 * role_precision * role_recall / (role_precision + role_recall + 1e-8)
         return {
-            "unit_pos_accuracy": self.unit_pos_correct / (self.total_units + 1e-8),
-            "aux_kind_accuracy": self.aux_kind_correct / (self.total_units + 1e-8),
-            "unit_identity_accuracy": self.unit_identity_correct / (self.total_units + 1e-8),
+            "head_pos_accuracy": self.head_pos_correct / (self.total_units + 1e-8),
+            "head_aux_kind_accuracy": self.head_aux_kind_correct / (self.total_units + 1e-8),
+            "head_identity_accuracy": self.head_identity_correct / (self.total_units + 1e-8),
             "decision_accuracy": self.decision_correct / (self.total_units + 1e-8),
             "role_precision": role_precision,
             "role_recall": role_recall,
@@ -112,6 +118,8 @@ def main() -> int:
     parser.add_argument("--train_path", type=Path)
     parser.add_argument("--dev_path", type=Path)
     parser.add_argument("--test_path", type=Path)
+    parser.add_argument("--ud_upos_dir", type=Path)
+    parser.add_argument("--disable_ud_upos", action="store_true")
     parser.add_argument("--batch_size", type=int)
     parser.add_argument("--threshold", type=float)
     parser.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda", "mps"))
@@ -145,6 +153,8 @@ def main() -> int:
     vocab = HierarchicalVocab.load(vocab_path)
     model = build_model_from_checkpoint(checkpoint, vocab, merged_args).to(device)
     model.load_state_dict(compatible_model_state_dict(checkpoint, model))
+    tokenizer = build_tokenizer_from_config(merged_args)
+    ud_upos_by_split = load_ud_upos_maps(args, merged_args)
 
     splits = {
         "train": (train_path, args.max_train_samples, args.max_train_units),
@@ -172,12 +182,15 @@ def main() -> int:
             data_path,
             max_samples=max_samples,
             max_units=max_units,
+            ud_upos_by_line=ud_upos_by_split.get(split_name),
         )
         split_output = evaluate_split(
             split_name=split_name,
             records=records,
             vocab=vocab,
             model=model,
+            tokenizer=tokenizer,
+            max_subword_length=int(merged_args.get("max_subword_length", 512)),
             device=device,
             batch_size=batch_size,
             threshold=threshold,
@@ -208,6 +221,7 @@ def build_analysis_records(
     data_path: Path,
     max_samples: int | None = None,
     max_units: int | None = None,
+    ud_upos_by_line: dict[int, tuple[str, ...]] | None = None,
 ) -> list[AnalysisRecord]:
     records: list[AnalysisRecord] = []
     with data_path.open("r", encoding="utf-8") as handle:
@@ -222,7 +236,11 @@ def build_analysis_records(
             oracle = extract_hierarchical_oracle(sample).to_dict()
             words = tuple(str(word) for word in oracle["words"])
             root_token_sets = tuple(tuple(int(token_id) for token_id in item) for item in oracle["root_token_sets"])
-            examples = build_hierarchical_examples_from_oracle(sample_id, oracle)
+            examples = build_hierarchical_examples_from_oracle(
+                sample_id,
+                oracle,
+                upos_tags=(ud_upos_by_line or {}).get(line_number),
+            )
 
             for example in examples:
                 unit = oracle["units"][example.unit_index]
@@ -247,6 +265,8 @@ def evaluate_split(
     records: list[AnalysisRecord],
     vocab: HierarchicalVocab,
     model: HierarchicalTokenSetParser,
+    tokenizer: Any | None,
+    max_subword_length: int,
     device: torch.device,
     batch_size: int,
     threshold: float,
@@ -262,7 +282,13 @@ def evaluate_split(
         dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=lambda batch: collate_hierarchical_batch(batch, pad_id=vocab.pad_id),
+        collate_fn=lambda batch: collate_hierarchical_batch(
+            batch,
+            pad_id=vocab.pad_id,
+            upos_pad_id=vocab.upos_pad_id,
+            tokenizer=tokenizer,
+            max_subword_length=max_subword_length,
+        ),
     )
 
     id_to_unit_pos = invert_mapping(vocab.unit_pos2id)
@@ -274,8 +300,8 @@ def evaluate_split(
     metrics = MetricAccumulator()
     role_label_metrics: dict[str, Counter[str]] = defaultdict(Counter)
     role_family_metrics: dict[str, Counter[str]] = defaultdict(Counter)
-    unit_pos_confusion: Counter[tuple[str, str]] = Counter()
-    aux_kind_confusion: Counter[tuple[str, str]] = Counter()
+    head_pos_confusion: Counter[tuple[str, str]] = Counter()
+    head_aux_kind_confusion: Counter[tuple[str, str]] = Counter()
     decision_confusion: Counter[tuple[str, str]] = Counter()
     role_set_confusion: Counter[tuple[str, str]] = Counter()
     bio_prefix_confusion: Counter[tuple[str, str]] = Counter()
@@ -300,37 +326,21 @@ def evaluate_split(
             cursor += batch_size_actual
 
             batch = move_batch_to_device(batch, device)
-            output = model(
-                batch["word_ids"],
-                batch["attention_mask"],
-                batch["unit_mask"],
-                batch["view_kind"],
-                batch["query_role_ids"],
-                batch["shared_role_ids"],
-            )
-            unit_pos_pred = output["unit_pos_logits"].argmax(dim=-1).cpu()
-            aux_kind_pred = output["aux_kind_logits"].argmax(dim=-1).cpu()
+            output = forward_hierarchical_model(model, batch)
+            unit_pos_pred = output["head_pos_logits"].argmax(dim=-1).cpu()
+            aux_kind_pred = output["head_aux_kind_logits"].argmax(dim=-1).cpu()
             decision_pred = output["decision_logits"].argmax(dim=-1).cpu()
-            role_scores = torch.sigmoid(output["role_logits"])
-            role_pred = role_scores >= threshold
-            if force_one_role_per_unit_token and role_scores.size(-1) > 0:
-                force_role_per_token = batch.get("force_role_per_token")
-                if force_role_per_token is None:
-                    force_mask = batch["unit_mask"]
-                else:
-                    force_mask = batch["unit_mask"] & force_role_per_token.unsqueeze(1)
-                no_role_pred = ~role_pred.any(dim=-1) & force_mask
-                best_role = role_scores.argmax(dim=-1)
-                role_pred = role_pred.clone()
-                role_pred[no_role_pred, best_role[no_role_pred]] = True
-            role_pred = role_pred.cpu()
+            role_pred = model.decode_role_labels(
+                output["role_logits"],
+                batch["active_unit_mask"],
+            ).cpu()
 
             for row_index, record in enumerate(batch_records):
                 prediction = build_unit_prediction(
                     split_name=split_name,
                     record=record,
-                    pred_unit_pos=id_to_unit_pos[int(unit_pos_pred[row_index])],
-                    pred_aux_kind=id_to_aux_kind[int(aux_kind_pred[row_index])],
+                    pred_head_pos=id_to_unit_pos[int(unit_pos_pred[row_index])],
+                    pred_head_aux_kind=id_to_aux_kind[int(aux_kind_pred[row_index])],
                     pred_decision=id_to_decision[int(decision_pred[row_index])],
                     pred_role_sets=predicted_role_sets(
                         role_pred[row_index],
@@ -344,8 +354,8 @@ def evaluate_split(
                     metrics=metrics,
                     role_label_metrics=role_label_metrics,
                     role_family_metrics=role_family_metrics,
-                    unit_pos_confusion=unit_pos_confusion,
-                    aux_kind_confusion=aux_kind_confusion,
+                    head_pos_confusion=head_pos_confusion,
+                    head_aux_kind_confusion=head_aux_kind_confusion,
                     decision_confusion=decision_confusion,
                     role_set_confusion=role_set_confusion,
                     bio_prefix_confusion=bio_prefix_confusion,
@@ -375,8 +385,8 @@ def evaluate_split(
         "error_type_counts": dict(error_type_counts.most_common()),
         "role_label_metrics": counter_metrics(role_label_metrics),
         "role_family_metrics": counter_metrics(role_family_metrics),
-        "unit_pos_confusion": confusion_to_rows(unit_pos_confusion),
-        "aux_kind_confusion": confusion_to_rows(aux_kind_confusion),
+        "head_pos_confusion": confusion_to_rows(head_pos_confusion),
+        "head_aux_kind_confusion": confusion_to_rows(head_aux_kind_confusion),
         "decision_confusion": confusion_to_rows(decision_confusion),
         "role_set_confusion_top": confusion_to_rows(role_set_confusion, limit=top_k),
         "bio_prefix_confusion_top": confusion_to_rows(bio_prefix_confusion, limit=top_k),
@@ -402,8 +412,8 @@ def build_unit_prediction(
     *,
     split_name: str,
     record: AnalysisRecord,
-    pred_unit_pos: str,
-    pred_aux_kind: str,
+    pred_head_pos: str,
+    pred_head_aux_kind: str,
     pred_decision: str,
     pred_role_sets: dict[int, tuple[str, ...]],
 ) -> dict[str, Any]:
@@ -453,16 +463,16 @@ def build_unit_prediction(
                 }
             )
 
-    pos_match = pred_unit_pos == record.example.unit_pos
-    aux_match = pred_aux_kind == record.example.aux_kind
+    pos_match = pred_head_pos == record.example.unit_pos
+    aux_match = pred_head_aux_kind == record.example.aux_kind
     decision_match = pred_decision == record.example.decision
     unit_role_match = role_token_exact == role_token_total
     unit_exact = pos_match and aux_match and decision_match and unit_role_match
     error_types = []
     if not pos_match:
-        error_types.append("unit_pos")
+        error_types.append("head_pos")
     if not aux_match:
-        error_types.append("aux_kind")
+        error_types.append("head_aux_kind")
     if not decision_match:
         error_types.append("decision")
     if role_fn:
@@ -474,7 +484,7 @@ def build_unit_prediction(
         "split": split_name,
         "sample_id": record.example.sample_id,
         "unit_index": record.example.unit_index,
-        "query_index": record.example.query_index,
+        "example_index": record.example.example_index,
         "parent_unit_index": record.example.parent_unit_index,
         "sentence": record.sentence,
         "words": list(record.words),
@@ -482,16 +492,9 @@ def build_unit_prediction(
         "unit_features": unit_features(record.unit),
         "gold": {
             "view_kind": record.example.view_kind,
-            "query_role_by_token": [
-                {"token_id": token_id, "role": role}
-                for token_id, role in record.example.query_role_by_token
-            ],
-            "shared_role_by_token": [
-                {"token_id": token_id, "roles": list(roles)}
-                for token_id, roles in record.example.shared_role_by_token
-            ],
-            "unit_pos": record.example.unit_pos,
-            "aux_kind": record.example.aux_kind,
+            "active_unit_pos": record.example.unit_pos,
+            "head_pos": record.example.unit_pos,
+            "head_aux_kind": record.example.aux_kind,
             "decision": record.example.decision,
             "input_token_ids": list(record.example.input_token_ids),
             "input_tokens": [
@@ -504,15 +507,15 @@ def build_unit_prediction(
             "external_links": record.unit.get("external_links", []),
         },
         "pred": {
-            "unit_pos": pred_unit_pos,
-            "aux_kind": pred_aux_kind,
+            "head_pos": pred_head_pos,
+            "head_aux_kind": pred_head_aux_kind,
             "decision": pred_decision,
             "roles_by_token": pred_roles_by_token,
         },
         "matches": {
-            "unit_pos": pos_match,
-            "aux_kind": aux_match,
-            "unit_identity": pos_match and aux_match,
+            "head_pos": pos_match,
+            "head_aux_kind": aux_match,
+            "head_identity": pos_match and aux_match,
             "decision": decision_match,
             "roles": unit_role_match,
             "unit_exact": unit_exact,
@@ -535,8 +538,8 @@ def update_analysis_counters(
     metrics: MetricAccumulator,
     role_label_metrics: dict[str, Counter[str]],
     role_family_metrics: dict[str, Counter[str]],
-    unit_pos_confusion: Counter[tuple[str, str]],
-    aux_kind_confusion: Counter[tuple[str, str]],
+    head_pos_confusion: Counter[tuple[str, str]],
+    head_aux_kind_confusion: Counter[tuple[str, str]],
     decision_confusion: Counter[tuple[str, str]],
     role_set_confusion: Counter[tuple[str, str]],
     bio_prefix_confusion: Counter[tuple[str, str]],
@@ -550,8 +553,8 @@ def update_analysis_counters(
     matches = prediction["matches"]
     counts = prediction["role_counts"]
     metrics.update(
-        pos_match=matches["unit_pos"],
-        aux_match=matches["aux_kind"],
+        pos_match=matches["head_pos"],
+        aux_match=matches["head_aux_kind"],
         decision_match=matches["decision"],
         unit_role_match=matches["roles"],
         role_tp=int(counts["tp"]),
@@ -562,8 +565,8 @@ def update_analysis_counters(
     )
     update_breakdowns(prediction, breakdowns)
 
-    unit_pos_confusion[(prediction["gold"]["unit_pos"], prediction["pred"]["unit_pos"])] += 1
-    aux_kind_confusion[(prediction["gold"]["aux_kind"], prediction["pred"]["aux_kind"])] += 1
+    head_pos_confusion[(prediction["gold"]["head_pos"], prediction["pred"]["head_pos"])] += 1
+    head_aux_kind_confusion[(prediction["gold"]["head_aux_kind"], prediction["pred"]["head_aux_kind"])] += 1
     decision_confusion[(prediction["gold"]["decision"], prediction["pred"]["decision"])] += 1
     for error_type in prediction["error_types"]:
         error_type_counts[error_type] += 1
@@ -600,9 +603,9 @@ def update_breakdowns(
     features = prediction["unit_features"]
     keys = {
         "view_kind": prediction["gold"]["view_kind"],
-        "unit_pos": prediction["gold"]["unit_pos"],
-        "aux_kind": prediction["gold"]["aux_kind"],
-        "is_aux": str(prediction["gold"]["aux_kind"] != NON_AUX_KIND).lower(),
+        "active_unit_pos": prediction["gold"]["active_unit_pos"],
+        "head_aux_kind": prediction["gold"]["head_aux_kind"],
+        "is_aux": str(prediction["gold"]["head_aux_kind"] != NON_AUX_KIND).lower(),
         "decision": prediction["gold"]["decision"],
         "depth_bucket": depth_bucket(features["depth"]),
         "input_size_bucket": count_bucket(features["input_token_count"]),
@@ -617,8 +620,8 @@ def update_breakdowns(
     }
     for breakdown_name, value in keys.items():
         breakdowns[breakdown_name][value].update(
-            pos_match=prediction["matches"]["unit_pos"],
-            aux_match=prediction["matches"]["aux_kind"],
+            pos_match=prediction["matches"]["head_pos"],
+            aux_match=prediction["matches"]["head_aux_kind"],
             decision_match=prediction["matches"]["decision"],
             unit_role_match=prediction["matches"]["roles"],
             role_tp=int(prediction["role_counts"]["tp"]),
@@ -637,13 +640,37 @@ def predicted_role_sets(
 ) -> dict[int, tuple[str, ...]]:
     output: dict[int, tuple[str, ...]] = {}
     for token_id in input_token_ids:
-        labels = [
-            id_to_role[role_id]
-            for role_id in role_ids
-            if token_id < role_pred_row.size(0) and bool(role_pred_row[token_id, role_id])
-        ]
-        output[int(token_id)] = tuple(labels)
+        if token_id < role_pred_row.size(0):
+            label = id_to_role[int(role_pred_row[token_id])]
+            output[int(token_id)] = () if label == "O" else (label,)
+        else:
+            output[int(token_id)] = ()
     return output
+
+
+def load_ud_upos_maps(
+    args: argparse.Namespace,
+    config: dict[str, Any],
+) -> dict[str, dict[int, tuple[str, ...]]]:
+    if args.disable_ud_upos or bool(config.get("disable_ud_upos", False)):
+        return {}
+    ud_upos_dir = args.ud_upos_dir or Path(
+        config.get("ud_upos_dir", DEFAULT_UD_UPOS_DIR)
+    )
+    if not ud_upos_dir.exists():
+        return {}
+    return {
+        split: load_ud_upos_by_line(ud_upos_path(ud_upos_dir, split))
+        for split in ("train", "dev", "test")
+        if ud_upos_path(ud_upos_dir, split).exists()
+    }
+
+
+def ud_upos_path(base_dir: Path, split: str) -> Path:
+    preferred = base_dir / f"{split}_ud.jsonl"
+    if preferred.exists():
+        return preferred
+    return base_dir / f"{split}.jsonl"
 
 
 def build_model_from_checkpoint(
@@ -652,9 +679,16 @@ def build_model_from_checkpoint(
     config: dict[str, Any],
 ) -> HierarchicalTokenSetParser:
     state = checkpoint["model_state_dict"]
-    embedding_dim = int(config.get("embedding_dim") or state["word_embedding.weight"].shape[1])
-    hidden_size = int(config.get("hidden_size") or state["encoder.weight_hh_l0"].shape[1] // 3)
+    encoder_type = str(config.get("encoder_type", "gru"))
+    embedding_dim = int(config.get("embedding_dim") or state.get("word_embedding.weight", torch.empty(0, 128)).shape[1])
+    if encoder_type == "gru":
+        hidden_size = int(config.get("hidden_size") or state["encoder.weight_hh_l0"].shape[1] // 3)
+    else:
+        hidden_size = int(config.get("hidden_size", 128))
     dropout = float(config.get("dropout", 0.2))
+    use_crf = config.get("use_crf")
+    if use_crf is None:
+        use_crf = any(key.startswith("role_crf.") for key in state)
     return HierarchicalTokenSetParser(
         vocab_size=len(vocab.word2id),
         num_unit_pos=len(vocab.unit_pos2id),
@@ -666,9 +700,28 @@ def build_model_from_checkpoint(
         pad_id=vocab.pad_id,
         num_decisions=len(vocab.decision2id),
         num_view_kinds=len(vocab.view_kind2id),
-        num_query_roles=len(vocab.query_role2id),
-        num_shared_roles=len(vocab.shared_role2id),
+        num_upos=len(vocab.upos2id),
+        use_crf=bool(use_crf),
+        role_label_names=labels_by_id(vocab.role_label2id),
+        encoder_type=encoder_type,
+        bert_model_name=str(config.get("bert_model", "bert-base-cased")) if encoder_type == "bert" else None,
+        bert_local_files_only=bool(config.get("bert_local_files_only", False)),
     )
+
+
+def build_tokenizer_from_config(config: dict[str, Any]):
+    if str(config.get("encoder_type", "gru")) != "bert":
+        return None
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(config.get("bert_model", "bert-base-cased")),
+        use_fast=True,
+        local_files_only=bool(config.get("bert_local_files_only", False)),
+    )
+    if not getattr(tokenizer, "is_fast", False):
+        raise ValueError("hierarchical BERT analysis requires a fast tokenizer")
+    return tokenizer
 
 
 def compatible_model_state_dict(
@@ -676,15 +729,25 @@ def compatible_model_state_dict(
     model: HierarchicalTokenSetParser,
 ) -> dict[str, torch.Tensor]:
     state = dict(checkpoint["model_state_dict"])
+    legacy_key_map = {
+        "unit_pos_classifier.weight": "head_pos_classifier.weight",
+        "unit_pos_classifier.bias": "head_pos_classifier.bias",
+        "aux_kind_classifier.weight": "head_aux_kind_classifier.weight",
+        "aux_kind_classifier.bias": "head_aux_kind_classifier.bias",
+    }
+    for old_key, new_key in legacy_key_map.items():
+        if new_key not in state and old_key in state:
+            state[new_key] = state[old_key]
+        state.pop(old_key, None)
     model_state = model.state_dict()
-    for key in (
-        "view_kind_embedding.weight",
-        "query_role_embedding.weight",
-        "shared_role_embedding.weight",
-    ):
-        if key not in state:
-            state[key] = model_state[key].detach().cpu()
-    return state
+    compatible_state = {}
+    for key, value in state.items():
+        if key in model_state and tuple(value.shape) == tuple(model_state[key].shape):
+            compatible_state[key] = value
+    for key, value in model_state.items():
+        if key not in compatible_state:
+            compatible_state[key] = value.detach().cpu()
+    return compatible_state
 
 
 def load_checkpoint(path: Path, map_location: str | torch.device) -> dict[str, Any]:
@@ -703,6 +766,13 @@ def save_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
+
+
+def labels_by_id(label2id: dict[str, int]) -> list[str]:
+    return [
+        label
+        for label, _index in sorted(label2id.items(), key=lambda item: item[1])
+    ]
 
 
 def resolve_device(value: str) -> torch.device:

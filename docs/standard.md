@@ -190,7 +190,7 @@ Lingua-Graph 的基本语义单位不是孤立 token，也不是单个 node labe
 | `pred.arg.1` | 谓词第 1 论元，常为 subject-like argument。 |
 | `pred.arg.2` | 谓词第 2 论元，常为 object-like argument。 |
 | `pred.arg.3` | 第 3 论元，如间接宾语。 |
-| `pred.arg.4` | 谓词内部第 4 论元，如宾补、结果补语、被谓词选择的补足语等；不用于普通目的、原因、时间、方式状语。 |
+| `pred.arg.4` | 谓词内部第 4 论元，如宾补、结果补语、由 `pred.arg.2` / `pred.arg.3` 等矩阵论元控制的补足事件等；不用于普通目的、原因、时间、方式状语。 |
 | `func.arg` | 函数论元。 |
 | `variable` | 被修饰、被约束或被操作的对象。 |
 | `body` | 修饰体、约束体或操作体。 |
@@ -358,7 +358,7 @@ give/FactualPredicator
 5. 不允许创建 `Missing` node 作为 `pred.arg.1` 或其他论元。若省略主语只是泛指、祈使语气、标题/fragment、目的不定式或无法从句内确定的参与者，允许该 predicate 不带 `pred.arg.1`，并在语义评分中按上下文判断；若 controller 可恢复，则应连接到 controller 或其 `DESC`。
 6. 直接宾语通常为 `pred.arg.2`。
 7. 间接宾语通常为 `pred.arg.3`。
-8. 宾补、结果补语、被谓词选择的补足语等可用 `pred.arg.4`。
+8. 宾补、结果补语、由 `pred.arg.2` / `pred.arg.3` 等矩阵论元控制的补足事件可用 `pred.arg.4`；单纯 `verb + to VP` 的内容事件通常作 `pred.arg.2`。
 9. 复杂论元应是一个节点或一个 descendant subgraph，而不是散乱 token。
 
 在现有 JSONL serialization 中，谓词论元有时会指向 determiner、modifier、punctuation、`Modification`、`Expression`、`Ref` 等 wrapper node。若对应实体或事实可通过 `DESC(v)` 清晰恢复，这属于合法结构变体；只有 descendant subgraph 无法恢复核心论元时，才应判为 PFA 或语义错误。
@@ -403,6 +403,46 @@ and/ConjunctionalFunctor
 ```
 
 纯被动、进行或 lexical predicate 不按该规则拆分；`was indicted`、`are looking`、`has been approved` 等仍作为 `FactualPredicator` 谓词短语，除非上下文和词性明确表明后项是 adjectival/state complement。
+
+1a. **形容词化分词必须按状态/属性处理**。`-ing`、`-ed`、`-en` 等分词形式不能仅因词源是动词就标为 `FactualPredicator`。若该词在当前句中已经完全形容词化，只表达稳定属性、类别、状态、评价或结果状态，且自身没有可恢复的事件论元结构，应标为 `ModificationalConstant`：
+
+```text
+the attached file
+
+attached/ModificationalConstant
+  as:modification -> file
+```
+
+```text
+they seemed more interested
+
+seemed/FactualPredicator
+  pred.arg.1 -> they
+  pred.arg.2 -> interested/ModificationalConstant
+more/ModificationalConstant
+  as:modification -> seemed
+```
+
+常见形容词化分词包括但不限于 `interested`、`interesting`、`concerned`、`excited`、`amazed`、`surprised`、`tired`、`worried`、`disappointed`、`overpriced`、`missing`、`attached`、`marked`、`fallen`、`burning`、`beginning` 等。判断标准不是词表，而是当前用法是否为属性/状态：`be/look/seem/remain/become/get/feel + adjectival participle`、`make/keep/leave/have + object + adjectival participle`、以及前置/后置的单叶子属性修饰，默认使用 `ModificationalConstant`，除非上下文明确显示该分词仍有事件谓词结构。
+
+1b. **事件性分词不能压成单层修饰**。若分词仍表达事件、动作、过程或被动事实，并且带有可恢复的施事、受事、补足语、介词论元、控制关系或内部修饰结构，它本身应保留为 `FactualPredicator`。如果这个分词短语整体修饰某个宿主，应额外使用外层 `Modification` 包装，而不是把分词词面直接标成 `ModificationalConstant --as:modification--> head`：
+
+```text
+the subject being shot
+
+Modification
+  variable -> subject
+  body -> being shot/FactualPredicator
+```
+
+```text
+Xiao said crushing legitimate dissent was making the problem worse
+
+crushing/FactualPredicator
+  pred.arg.2 -> dissent
+```
+
+这类事件性分词包括但不限于 `crushing legitimate dissent`、`dominating the race`、`being sent to Russia`、`transfected with Bcl-2`、`thought lost` 中的 `thought`、以及带 `by/with/to/in/on` 等论元的被动/进行分词短语。若数据中把这类非形容词化分词标为单个 `ModificationalConstant` 或单层 `Modification`，应改回内部 `FactualPredicator`，并让外层修饰关系只表达该事件性分词短语对宿主的 scope。
 
 2. **副词、程度词和否定从谓词节点拆出，并保持 scope 可恢复**。`not`、`n't`、`nt`、分裂的 `n ' t`、普通 adverb/degree modifier 不应无结构地留在 `FactualPredicator` 内。它们应作为 `ModificationalConstant`，用 `as:modification` 修饰其真实 scope。对于 `be + adjective/state complement`，这些修饰通常外包在 `be` 谓词外层；补语本身仍在 `pred.arg.2`。例如：
 
@@ -471,7 +511,7 @@ are/FactualPredicator
 
 `pred.arg.4` 与状语修饰必须区分：
 
-1. 若成分是谓词语义价的一部分，或表达宾补、结果状态、被谓词选择的非限定补足语，可作为 `pred.arg.4`。例如 `painted the wall red` 中 `red`、`elected him president` 中 `president`、`attempt to leave` 中 `to leave`。
+1. 若成分是谓词语义价的一部分，或表达宾补、结果状态、由矩阵谓词的 `pred.arg.2` / `pred.arg.3` 等论元控制的非限定补足事件，可作为 `pred.arg.4`。例如 `painted the wall red` 中 `red`、`elected him president` 中 `president`、`allowed the company to grow` 中 `to grow`、`assigned him a task to complete` 中 `to complete`。
    对 `make/keep/leave/have + object + adjective/state complement` 这类宾语补语 / result-state 构式，matrix predicate 必须保留 object 为 `pred.arg.2`，并用 `pred.arg.4` 指向补语；补语本身通常是 `ModificationalConstant` 或可恢复的并列/修饰 subgraph，而不是另起一个以 object 为 `pred.arg.1` 的 `FactualPredicator`。例如：
 
 ```text
@@ -488,10 +528,12 @@ leave/FactualPredicator
   pred.arg.4 -> dead/ModificationalConstant
 ```
 
-2. 若成分回答目的、原因、时间、方式、条件等问题，且主谓宾事实在没有该成分时仍然完整，应建模为 `Modification`、介词/状语修饰，或在有明确逻辑关系时建模为 `LogicalPredicator`。
-3. 目的状语，尤其是可改写为 `in order to ...` 的不定式短语，不应作为主谓词的 `pred.arg.4`；它应作为修饰体修饰完整事件或相应事件子图。
-4. 若普通目的、时间、方式状语有显式引导词（如 `to`、`on`、`in`、`for`），优先用该 `to`/介词作为有 token anchor 的 `ModificationalFunctor`：`variable` 指向核心事件或已包装的核心事件，`body` 指向状语内容。不要为了这种有锚点的结构再额外包一层无 token 的 `Modification` aux。`in order to` 等固定引导短语应作为一个整体的 `ModificationalFunctor`。
-5. 当上层谓词选择的是“带有状语修饰的完整补足事件”时，上层边可以指向该介词/`to` 修饰结构的根节点；但不能把状语的 `body` 本身误当成被选择的 `pred.arg.4`。
+2. 对 `to VP`，若它是矩阵谓词选择的内容事件，作 `pred.arg.2`；若它是由 `pred.arg.2` / `pred.arg.3` 等矩阵论元控制的补足事件，作 `pred.arg.4`；若它可改写为 `in order to VP` 并修饰完整事件，作 `Modification`。
+3. `want to play`、`attempt to leave`、`decide to stay` 中的 `to VP` 是矩阵谓词选择的内容事件，作 `pred.arg.2`；`allowed the company to grow`、`told him to wait`、`assigned him a task to complete` 中的 `to VP` 是由矩阵论元控制的补足事件，作 `pred.arg.4`。
+4. 若成分回答目的、原因、时间、方式、条件等问题，且主谓宾事实在没有该成分时仍然完整，应建模为 `Modification`、介词/状语修饰，或在有明确逻辑关系时建模为 `LogicalPredicator`。
+5. 目的状语，尤其是可改写为 `in order to ...` 的不定式短语，不应作为主谓词的 `pred.arg.4`；它应作为修饰体修饰完整事件或相应事件子图。例如 `went there to see her` 中 `to see her` 修饰 `went there` 事件，应作 `Modification`。
+6. 若普通目的、时间、方式状语有显式引导词（如 `to`、`on`、`in`、`for`），优先用该 `to`/介词作为有 token anchor 的 `ModificationalFunctor`：`variable` 指向核心事件或已包装的核心事件，`body` 指向状语内容。不要为了这种有锚点的结构再额外包一层无 token 的 `Modification` aux。`in order to` 等固定引导短语应作为一个整体的 `ModificationalFunctor`。
+7. 当上层谓词选择的是“带有状语修饰的完整补足事件”时，上层边可以指向该介词/`to` 修饰结构的根节点；但不能把状语的 `body` 本身误当成被选择的 `pred.arg.4`。
 
 复合介词 / 固定修饰引导词按 `in order to` 的方式处理：若整个短语在句中作为普通目的、原因、让步、依据、关系、空间、时间、方式、替代、交换、补充等修饰引导词，应覆盖连续 token 作为一个 `ModificationalFunctor`，`variable` 指向被修饰的核心事件/实体/已包装结构，`body` 指向该短语引出的内容。不要把短语内部拆成多层普通介词、名词或 `to`，也不要额外添加无 token 的 `Modification` wrapper，除非确有额外 scope 需要。
 
@@ -1324,23 +1366,23 @@ Koichi Morita (army officer)
 
 表示规则：
 
-核心区分：`Expression` 表示“这个名字 / 代码 / 标题作为一个表达式 unit 如何由表面部件组成”；`Modification` 表示“这个专名内部仍有可恢复的 head、type 和限定 scope”。判断点不是“它是不是专名”，而是“把内部部件拆开后是否能负责任地恢复 head-modifier 关系”。专名不是一律摊平成 `Expression`，但也不能为了拆开专名而把名、姓、型号片段、品牌词或官方组织名中的普通名词强行做成 predicate-argument / modifier。审查时按以下顺序判断：
+核心区分：`Expression` 表示“这个名字 / 代码 / 标题作为一个表达式 unit 如何由表面部件组成”；`Modification` 表示“这个专名内部仍有可恢复的 head、type 和限定 scope”。判断点不是“它是不是专名、官方名称或词化名称”，而是“把内部部件拆开后是否能负责任地恢复语义上的 head-modifier 关系”。专名不是一律摊平成 `Expression`，官方名 / 词化名也不是免拆理由；但也不能为了拆开专名而把名、姓、型号片段、品牌词或官方组织名中无法稳定解释的普通名词强行做成 predicate-argument / modifier。审查时按以下顺序判断：
 
 1. 先判定该片段是否只是一个 entity/title/name fragment。若缺少显式谓词，不得为了满足普通句子模板而补 `is`、`be named`、`means` 等事实谓词；root 只需通过 `DESC(root)` 恢复完整专名或标题。
-2. 再判定内部关系是“格式 / 身份组合”还是“head + qualifier”。若内部部件只是共同组成一个名字、代码、标题、缩写、官方名称或符号串，且没有可负责任恢复的中心词和修饰 scope，用 `ExpressionFunctor` / `Expression`。若内部有仍然承担类型/类别/中心词功能的 head，或地点、机构、人物、领域、等级等限定的 scope 可恢复，则用层次化 `Modification` / `as:modification`。
-3. 简单单词专名或不可分实体可以保持单个 `NominalConstant`，不必为了形式统一强行包成 `Expression`。多词但不透明的专名、标题、品牌、作品名、人名、组织名、型号、缩写等，可以作为一个 `Expression` unit。
+2. 再判定内部关系是“格式 / 身份组合”还是“head + qualifier”。若内部部件只是共同组成一个名字、代码、标题、缩写或符号串，且没有可负责任恢复的中心词和修饰 scope，用 `ExpressionFunctor` / `Expression`。若内部有仍然承担类型/类别/中心词功能的 head，或地点、机构、人物、领域、等级、编号、方向、属性等限定的 scope 可恢复，则用层次化 `Modification` / `as:modification`；即使整体是固定专名、官方名称或高频词化名称，也不应因此打平成 `Expression`。
+3. 简单单词专名或不可分实体可以保持单个 `NominalConstant`，不必为了形式统一强行包成 `Expression`。多词但不透明的专名、标题、品牌、作品名、人名、组织名、型号、缩写等，只有在内部没有可靠 head-modifier 关系时，才作为一个 `Expression` unit。
 
 `Expression` 的典型使用：
 
-1. **人名和不透明名称**：`George Vukmanovich`、`Donna Sells`、`Marquis de Condorcet` 这类人名内部通常不是 head-modifier；名、姓、贵族小品词等只是共同组成姓名，应作为 `Expression` / name unit，而不是把 first name 标成 last name 的 `body`。
-2. **标题、品牌、口号、作品名和不透明官方名称**：`Great Sandwiches, Great Prices`、`PHOTOS DONE WELL`、`World Bank`、`World Hats Mart`、`Clean Ocean Action` 这类标题式或官方名称，如果上下文没有把它的内部词作为普通命题或可恢复 head-scope 使用，可作为 title/name expression；不要仅因其中含有 `Bank`、`Mart`、`Action` 等普通名词就强行拆成 `Modification`。
-3. **代码、型号、缩写、URL/email/path、化学/生物标记等符号串**：内部的 `/`、`.`、`@`、`?`、`=`、`&`、`#`、`+`、括号、hyphen 等若负责把两侧部件组合为一个格式表达，应以该 operator 为 `ExpressionFunctor` root，`func.arg` 指向左右部件或内层 expression。典型包括 `ATF-1`、`Epstein-Barr`、`NF-kappa`、URL/path/email、型号中的 slash/dot/hyphen。这个 operator 节点本身就是 expression root；不要额外再加一层只包住 operator 的无词面 `Expression` aux。
-4. **纯格式地名 / 地址 / 数字化名称**：当逗号、斜杠、点号只是地址或编号格式的一部分，并没有更具体的实体-限定关系需要表达时，可用 `ExpressionFunctor`。例如纯地址字段里的 `Houston, Texas` 可以按地址 expression 处理。
+1. **人名和不透明名称**：`George Vukmanovich`、`Donna Sells`、`Chuck McCann`、`Ruhama Avraham`、`Derek Trucks`、`Rev. Gerald Robinson`、`Marquis de Condorcet` 这类人名内部通常不是 head-modifier；名、姓、头衔缩写、贵族小品词等只是共同组成姓名，应作为 `Expression` / name unit，而不是把 first name 标成 last name 的 `body`。
+2. **标题、品牌、口号、作品名和不透明官方名称**：`Great Sandwiches, Great Prices`、`PHOTOS DONE WELL`、`La Voie`、人名式艺名、纯标题式 album / song / book name 这类内部没有稳定 head-scope 的名称，可作为 title/name expression；不要仅因其中含有普通名词、注册后缀或大写词就强行拆成 `Modification`。反过来，若内部确有可解释的语义限定关系，官方名称、机构名、球队名、作品相关名称本身不构成保留 `Expression` 的理由；例如 `World Bank`、`World Hats Mart`、`Clean Ocean Action`、`Blackburn Rovers`、`Golden State Warriors`、`Sesame Street` 等若按语义能恢复 head 和限定 scope，应按 `Modification` / `as:modification` 处理。
+3. **代码、型号、缩写、URL/email/path、化学/生物标记等符号串**：内部的 `/`、`.`、`@`、`?`、`=`、`&`、`#`、`+`、括号、hyphen 等若负责把两侧部件组合为一个格式表达，应以该 operator 为 `ExpressionFunctor` root，`func.arg` 指向左右部件或内层 expression。典型包括 `ATF-1`、`Epstein-Barr`、`NF-kappa`、`DNase I`、`CD25`、`J12746KM`、URL/path/email、型号中的 slash/dot/hyphen。这个 operator 节点本身就是 expression root；不要额外再加一层只包住 operator 的无词面 `Expression` aux。
+4. **纯格式地名 / 地址 / 数字化名称**：当逗号、斜杠、点号只是地址或编号格式的一部分，并没有更具体的实体-限定关系需要表达时，可用 `ExpressionFunctor`。例如纯地址字段里的 `Houston, Texas` 可以按地址 expression 处理。`Chatenay Malabry`、`Póvoa de Varzim` 这类内部 head 不可可靠恢复的地名也可作为 name expression。
 
 `Modification` 的典型使用：
 
-1. **有可恢复中心词的专名**：若专名内部的 airport、school、university、hospital、river、mountain、province、department、district、league、final、promoter、virus 等仍承担普通名词中心词或类型词功能，应保留 head。中心词或已经带近层修饰的中心词作 `Modification.variable`；限定它的地名、机构名、人物名、领域名、等级名、类型名等作 `Modification.body` 或叶子 `as:modification` source。注意：词面像普通名词并不自动触发 `Modification`；若该词只是官方名称的一部分且没有可恢复 head-scope，则仍可用 `Expression`。
-2. **有远近亲疏的多层限定**：多个限定不是平行 token 时，应按 scope 分层。`Los Angeles International Airport` 不应四词平铺成一个无层级 `Expression`：可先让 `International` 近层限定 `Airport`，再让 `Los Angeles` 这个地点 name unit 限定 `International Airport`。`NF-kappa B` 也不应把 `NF`、`kappa`、`B` 一概打平：hyphen/format 先组成 `NF-kappa`，再由该内层 name expression 限定外层的 `B`。同理，`World Cup quarter-final` 应保留 `final/quarter-final` 与 `World Cup` 的层级，不能把所有词打平成一个 list/expression。
+1. **有可恢复中心词的专名**：若专名内部的 airport、school、university、hospital、river、mountain、province、department、district、league、final、promoter、virus、war、street、team / side、state、country、city、authority、administration、legislature、bank、mart、network、newspaper/post、team nickname、front / movement 等仍承担普通名词中心词或类型词功能，应保留 head。中心词或已经带近层修饰的中心词作 `Modification.variable`；限定它的地名、机构名、人物名、领域名、等级名、类型名、方向词、属性词等作 `Modification.body` 或叶子 `as:modification` source。`United States`、`World Bank`、`Beetham Tower`、`CHERNOBYL ACCIDENT`、`Medicine Buddha`、`US Navy`、`US Dollars`、`Palestinian Authority`、`Illinois Legislature`、`Transportation Security Administration` 这类若内部可按语义限定读取，应保留 `States/Bank/Tower/ACCIDENT/Buddha/Navy/Dollars/Authority/Legislature/Administration` 等中心词。注意：词面像普通名词并不自动触发 `Modification`；若该词只是名称的一部分且没有可恢复 head-scope，则仍可用 `Expression`。
+2. **有远近亲疏的多层限定**：多个限定不是平行 token 时，应按 scope 分层。`Los Angeles International Airport` 不应四词平铺成一个无层级 `Expression`：可先让 `International` 近层限定 `Airport`，再让 `Los Angeles` 这个地点 name unit 限定 `International Airport`。`World War I` / `World War II` 也不是纯格式串：`World` 修饰 `War`，罗马数字 `I` / `II` 再限定整个 `World War`。`United States`、`North America`、`South America`、`South Asia`、`South Africa`、`New York`、`New Orleans`、`New Delhi`、`New South Wales` 这类地名 / 国名 / 区域名中，若方向词、属性词或旧地名片段仍可解释为对区域 / 地点 head 的限定，应保留对应修饰链，如 `United --as:modification--> States`、`South --as:modification--> Africa`、`New --as:modification--> York`、`New --as:modification--> South --as:modification--> Wales`。`Group A`、`England A`、`Section 6`、`Paragraph 13` 等后置组别 / 等级 / side / 编号标记若表达可恢复限定关系，应让 `A`、`6`、`13` 修饰前面的 group / team / section / paragraph unit，而不是把前项误当成后置标记的修饰体。`NF-kappa B` 也不应把 `NF`、`kappa`、`B` 一概打平：hyphen/format 先组成 `NF-kappa`，再由该内层 name expression 限定外层的 `B`。同理，`World Cup quarter-final` 应保留 `final/quarter-final` 与 `World Cup` 的层级，不能把所有词打平成一个 list/expression。
 3. **表达类型或所属领域的后项**：`Epstein-Barr virus` 中 `Epstein-Barr` 可先由 hyphen 构成 name expression，但 `virus` 是类型 head，整体应是 `Modification(variable=virus, body=Epstein-Barr-expression)`，而不是把 `virus` 也并入同一个无层级 expression。`Al-Anbar province`、`Mojave Airport`、`BamHI W promoter` 等也应优先检查是否有 recoverable head。
 4. **专名中的格式 operator 不排斥外层修饰**：hyphen、slash、dot 等可以在内层作为 `ExpressionFunctor`，但若整个 formatted name 再限定一个 head，应在外层用 `Modification`。也就是说，`Expression` 解决“部件如何组成名字片段”，`Modification` 解决“这个名字片段如何限定另一个 head”。
 

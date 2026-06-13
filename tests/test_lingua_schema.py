@@ -170,7 +170,7 @@ def test_train_schema_labels_are_valid():
     assert label_counts["nonsense"] == 0
     assert label_counts.get("as:nonsense", 0) == 0
     assert aux_counts["Ref"] == 715
-    assert aux_counts["Modification"] == 6695
+    assert aux_counts["Modification"] == 6707
 
 
 def test_aux_symbol_labels_match_required_node_types():
@@ -704,7 +704,7 @@ def test_train_graphs_are_single_rooted_dags():
         assert len(reachable) == len(nodes), (line_number, example["sentence"])
         assert_acyclic(adjacency)
 
-    assert root_type_counts["PunctuationalConstant"] == 9194
+    assert root_type_counts["PunctuationalConstant"] == 9193
     assert root_type_counts["GeneralFunctor"] == 268
 
 
@@ -771,7 +771,7 @@ def test_train_aux_structures_have_required_edges():
                 )
 
     assert aux_edge_counts["Ref"] == 715
-    assert aux_edge_counts["Modification"] == 6695
+    assert aux_edge_counts["Modification"] == 6707
 
 
 def test_numeric_colon_formats_use_expression_functors():

@@ -34,7 +34,7 @@ WH_WORDS = {"what", "who", "which", "whom", "whose", "where", "when", "why", "ho
 
 
 STANDARD_REFERENCES = {
-    "content_attach_dual_view": "hierarchical oracle default/content view policy",
+    "default_content_dual_view": "hierarchical oracle default/content view policy",
     "expression_vs_modification": "docs/standard.md 6.6, proper names section",
     "explicit_aux_vs_direct_modification_functor": "docs/standard.md 7.2.1 redundant Modification",
     "factual_predicator_vs_modification": "docs/standard.md 7.2.1 redundant Modification",
@@ -48,9 +48,9 @@ STANDARD_REFERENCES = {
 
 
 STANDARD_REVIEW_NOTES = {
-    "content_attach_dual_view": (
+    "default_content_dual_view": (
         "Intentional dual-view supervision: default view predicts the upper wrapper, "
-        "while content view parses the same-token-set child referenced by that wrapper."
+        "while content view parses the same-token-set child under that wrapper."
     ),
     "expression_vs_modification": (
         "Audit whether the internal relation is format/name composition or head+qualifier. "
@@ -203,8 +203,8 @@ def surface_category(labels: set[tuple[str, str, str, str]], surface_key: str) -
     aux_kind = {label[2] for label in labels}
     decisions = {label[3] for label in labels}
 
-    if is_content_attach_dual_view(labels):
-        return "content_attach_dual_view"
+    if is_default_content_dual_view(labels):
+        return "default_content_dual_view"
     if "Expression" in aux_kind and "Modification" in aux_kind:
         return "expression_vs_modification"
     if "Modification" in aux_kind and "ModificationalFunctor" in unit_pos:
@@ -239,11 +239,11 @@ def category_priority(category: str) -> int:
         "punctuation_or_symbol": 5,
         "whether_vs_other": 6,
         "other": 7,
-        "content_attach_dual_view": 8,
+        "default_content_dual_view": 8,
     }.get(category, 9)
 
 
-def is_content_attach_dual_view(labels: set[tuple[str, str, str, str]]) -> bool:
+def is_default_content_dual_view(labels: set[tuple[str, str, str, str]]) -> bool:
     views = {label[0] for label in labels}
     if views != {"default", "content"}:
         return False
@@ -253,36 +253,26 @@ def is_content_attach_dual_view(labels: set[tuple[str, str, str, str]]) -> bool:
     if not default_labels or not content_labels:
         return False
 
-    return (
-        all(label[1] == "ModificationalFunctor" and label[2] == "Modification" for label in default_labels)
-        and all(label[1] == "ModificationalFunctor" for label in content_labels)
-    )
+    return bool(default_labels and content_labels)
 
 
 def occurrence_key(row: dict[str, Any]) -> tuple[str, int, tuple[int, ...]]:
     return (row["split"], int(row["line"]), tuple(row["token_ids"]))
 
 
-def is_intentional_whether_parent_child(row: dict[str, Any], group: list[dict[str, Any]]) -> bool:
-    if row["unit_pos"] != "GeneralFunctor" or row["aux_kind"] != "Whether":
-        return False
+def is_intentional_same_token_parent_child(row: dict[str, Any], group: list[dict[str, Any]]) -> bool:
     children = row.get("children", [])
-    if len(children) != 1:
-        return False
-    child = children[0]
-    if child.get("edge_label") != "func.arg" or child.get("role") not in {"FUNC_ARG", "FUNC_ARG_REF"}:
-        return False
-    if tuple(child.get("token_ids", [])) != tuple(row["token_ids"]):
-        return False
-
     key = occurrence_key(row)
-    for other in group:
-        if other is row or (other["unit_pos"] == "GeneralFunctor" and other["aux_kind"] == "Whether"):
+    for child in children:
+        if tuple(child.get("token_ids", [])) != tuple(row["token_ids"]):
             continue
-        if occurrence_key(other) != key:
-            continue
-        if other["unit_pos"] == child.get("unit_pos") and other["aux_kind"] == child.get("aux_kind"):
-            return True
+        for other in group:
+            if other is row:
+                continue
+            if occurrence_key(other) != key:
+                continue
+            if other["unit_pos"] == child.get("unit_pos") and other["aux_kind"] == child.get("aux_kind"):
+                return True
     return False
 
 
@@ -329,34 +319,34 @@ def build_reports(args: argparse.Namespace) -> dict[str, Any]:
     conflict_occurrences: list[dict[str, Any]] = []
     excluded_dual_view_surface_count = 0
     excluded_dual_view_occurrence_count = 0
-    excluded_whether_parent_child_surface_count = 0
-    excluded_whether_parent_child_occurrence_count = 0
-    resolved_by_whether_parent_child_pruning_surface_count = 0
+    excluded_same_token_parent_child_surface_count = 0
+    excluded_same_token_parent_child_occurrence_count = 0
+    resolved_by_same_token_parent_child_pruning_surface_count = 0
     for surface_key, group in by_surface.items():
-        removed_whether_parent_child = []
-        if not args.include_whether_parent_child_conflicts:
+        removed_same_token_parent_child = []
+        if not args.include_same_token_parent_child_conflicts:
             kept_group = []
             for row in group:
-                if is_intentional_whether_parent_child(row, group):
-                    removed_whether_parent_child.append(row)
+                if is_intentional_same_token_parent_child(row, group):
+                    removed_same_token_parent_child.append(row)
                 else:
                     kept_group.append(row)
             group = kept_group
-            if removed_whether_parent_child:
-                excluded_whether_parent_child_surface_count += 1
-                excluded_whether_parent_child_occurrence_count += len(removed_whether_parent_child)
+            if removed_same_token_parent_child:
+                excluded_same_token_parent_child_surface_count += 1
+                excluded_same_token_parent_child_occurrence_count += len(removed_same_token_parent_child)
 
         label_counts = Counter(row["label"] for row in group)
         if len(label_counts) <= 1:
-            if removed_whether_parent_child:
-                resolved_by_whether_parent_child_pruning_surface_count += 1
+            if removed_same_token_parent_child:
+                resolved_by_same_token_parent_child_pruning_surface_count += 1
             continue
         shape_counts = Counter(row["structure"] for row in group)
         exact_counts = Counter(row["surface"] for row in group)
         split_counts = Counter(row["split"] for row in group)
         labels = {tuple(label.split("|")) for label in label_counts}
         category = surface_category(labels, surface_key)
-        if category == "content_attach_dual_view" and not args.include_dual_view_conflicts:
+        if category == "default_content_dual_view" and not args.include_dual_view_conflicts:
             excluded_dual_view_surface_count += 1
             excluded_dual_view_occurrence_count += len(group)
             continue
@@ -408,9 +398,9 @@ def build_reports(args: argparse.Namespace) -> dict[str, Any]:
         "conflict_occurrence_count": len(conflict_occurrences),
         "excluded_dual_view_surface_count": excluded_dual_view_surface_count,
         "excluded_dual_view_occurrence_count": excluded_dual_view_occurrence_count,
-        "excluded_whether_parent_child_surface_count": excluded_whether_parent_child_surface_count,
-        "excluded_whether_parent_child_occurrence_count": excluded_whether_parent_child_occurrence_count,
-        "resolved_by_whether_parent_child_pruning_surface_count": resolved_by_whether_parent_child_pruning_surface_count,
+        "excluded_same_token_parent_child_surface_count": excluded_same_token_parent_child_surface_count,
+        "excluded_same_token_parent_child_occurrence_count": excluded_same_token_parent_child_occurrence_count,
+        "resolved_by_same_token_parent_child_pruning_surface_count": resolved_by_same_token_parent_child_pruning_surface_count,
         "failed_sample_count": len(failed_samples),
         "category_counts": dict(Counter(row["category"] for row in conflict_groups).most_common()),
         "category_occurrences": dict(
@@ -536,9 +526,9 @@ def write_reports(report: dict[str, Any], output_dir: Path) -> None:
         f"- conflict occurrences: `{summary['conflict_occurrence_count']}` / `{summary['all_occurrence_count']}`",
         f"- excluded default/content dual-view surfaces: `{summary['excluded_dual_view_surface_count']}`",
         f"- excluded default/content dual-view occurrences: `{summary['excluded_dual_view_occurrence_count']}`",
-        f"- excluded intentional Whether parent/child surfaces: `{summary['excluded_whether_parent_child_surface_count']}`",
-        f"- excluded intentional Whether parent/child occurrences: `{summary['excluded_whether_parent_child_occurrence_count']}`",
-        f"- surfaces resolved by Whether parent/child pruning: `{summary['resolved_by_whether_parent_child_pruning_surface_count']}`",
+        f"- excluded same-token parent/child surfaces: `{summary['excluded_same_token_parent_child_surface_count']}`",
+        f"- excluded same-token parent/child occurrences: `{summary['excluded_same_token_parent_child_occurrence_count']}`",
+        f"- surfaces resolved by same-token parent/child pruning: `{summary['resolved_by_same_token_parent_child_pruning_surface_count']}`",
         f"- failed samples: `{summary['failed_sample_count']}`",
         "",
         "## Categories",
@@ -567,7 +557,7 @@ def write_reports(report: dict[str, Any], output_dir: Path) -> None:
             "- Expression vs Modification follows the standard's format/name-composition vs recoverable head+qualifier distinction.",
             "- Redundant Modification wrappers should be removed only when the body already recovers the relation and no scope is lost.",
             "- Pure default/content dual-view surfaces are excluded by default because they encode two intentional questions over the same token set.",
-            "- Same-span `Whether -> func.arg` parent/child layers are excluded by default because they encode the outer yes/no scope and the inner proposition separately.",
+            "- Same-token parent/child layers are excluded by default because default view and content view ask intentional separate questions over the same token set.",
         ]
     )
     (output_dir / "summary.md").write_text("\n".join(markdown) + "\n", encoding="utf-8")
@@ -612,9 +602,11 @@ def main() -> int:
         help="Keep pure default/content dual-view surfaces in the conflict report.",
     )
     parser.add_argument(
+        "--include-same-token-parent-child-conflicts",
         "--include-whether-parent-child-conflicts",
+        dest="include_same_token_parent_child_conflicts",
         action="store_true",
-        help="Keep same-span Whether->func.arg parent/child layers in the conflict report.",
+        help="Keep same-token parent/child layers in the conflict report.",
     )
     args = parser.parse_args()
 

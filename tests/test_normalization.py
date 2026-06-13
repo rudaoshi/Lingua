@@ -1,6 +1,7 @@
 from lingua.utils.normalization import (
     normalize_lingua_edges_to_predicate_nodes,
     normalize_simple_leaf_modifications,
+    simplify_lingua_predicate_nodes_to_edges,
 )
 
 
@@ -19,6 +20,18 @@ def root_indices(graph):
     for edge in graph["graph"]["edges"]:
         indegree[int(edge["end"])] += 1
     return [index for index, degree in enumerate(indegree) if degree == 0]
+
+
+def edge_signatures(graph):
+    return sorted(
+        (edge["start"], edge["end"], edge["label"], edge.get("confidence"))
+        for edge in graph["graph"]["edges"]
+    )
+
+
+def assert_same_graph_shape(left, right):
+    assert left["graph"]["nodes"] == right["graph"]["nodes"]
+    assert edge_signatures(left) == edge_signatures(right)
 
 
 def test_normalize_simple_leaf_modification_to_as_modification():
@@ -376,3 +389,137 @@ def test_normalize_lingua_edges_to_predicate_nodes_folds_coordinated_modifier_gr
     ]
     assert root_indices(normalized) == [0]
     assert_only_standardized_edges(normalized)
+
+
+def test_simplify_lingua_predicate_nodes_to_edges_roundtrips_simple_modification():
+    graph = {
+        "meta": {},
+        "words": ["saw", "red", "chair"],
+        "graph": {
+            "nodes": [
+                {"spans": [[0, 0]], "type": "FactualPredicator"},
+                {"spans": [[2, 2]], "type": "NominalConstant"},
+                {"spans": [[1, 1]], "type": "ModificationalConstant"},
+            ],
+            "edges": [
+                {"start": 0, "end": 2, "label": "pred.arg.2"},
+                {"start": 2, "end": 1, "label": "as:modification"},
+            ],
+        },
+    }
+
+    standardized, _ = normalize_lingua_edges_to_predicate_nodes(graph)
+    simplified, stats = simplify_lingua_predicate_nodes_to_edges(standardized)
+
+    assert stats["collapsed_relation_nodes:as:modification"] == 1
+    assert_same_graph_shape(simplified, graph)
+
+
+def test_simplify_lingua_predicate_nodes_to_edges_roundtrips_modifier_chain():
+    graph = {
+        "meta": {},
+        "words": ["saw", "very", "red", "chair"],
+        "graph": {
+            "nodes": [
+                {"spans": [[0, 0]], "type": "FactualPredicator"},
+                {"spans": [[1, 1]], "type": "ModificationalConstant"},
+                {"spans": [[2, 2]], "type": "ModificationalConstant"},
+                {"spans": [[3, 3]], "type": "NominalConstant"},
+            ],
+            "edges": [
+                {"start": 0, "end": 1, "label": "pred.arg.2"},
+                {"start": 1, "end": 2, "label": "as:modification"},
+                {"start": 2, "end": 3, "label": "as:modification"},
+            ],
+        },
+    }
+
+    standardized, _ = normalize_lingua_edges_to_predicate_nodes(graph)
+    simplified, stats = simplify_lingua_predicate_nodes_to_edges(standardized)
+
+    assert stats["collapsed_relation_nodes:as:modification"] == 2
+    assert_same_graph_shape(simplified, graph)
+
+
+def test_simplify_lingua_predicate_nodes_to_edges_roundtrips_punctuation_wrapped_modification():
+    graph = {
+        "meta": {},
+        "words": ["red", "chair", "."],
+        "graph": {
+            "nodes": [
+                {"spans": [[0, 0]], "type": "ModificationalConstant"},
+                {"spans": [[1, 1]], "type": "NominalConstant"},
+                {"spans": [[2, 2]], "type": "PunctuationalConstant"},
+            ],
+            "edges": [
+                {"start": 0, "end": 1, "label": "as:modification"},
+                {"start": 2, "end": 0, "label": "as:punctuation"},
+            ],
+        },
+    }
+
+    standardized, _ = normalize_lingua_edges_to_predicate_nodes(graph)
+    simplified, stats = simplify_lingua_predicate_nodes_to_edges(standardized)
+
+    assert stats["collapsed_relation_nodes:as:modification"] == 1
+    assert stats["collapsed_relation_nodes:as:punctuation"] == 1
+    assert_same_graph_shape(simplified, graph)
+
+
+def test_simplify_lingua_predicate_nodes_to_edges_roundtrips_coordinated_modifier_group():
+    graph = {
+        "meta": {},
+        "words": ["found", "and", "pre", "post", "menopausal", "women"],
+        "graph": {
+            "nodes": [
+                {"spans": [[0, 0]], "type": "FactualPredicator"},
+                {"spans": [[1, 1]], "type": "ConjunctionalFunctor"},
+                {"spans": [[2, 2]], "type": "ModificationalConstant"},
+                {"spans": [[3, 3]], "type": "ModificationalConstant"},
+                {"spans": [[4, 4]], "type": "ModificationalConstant"},
+                {"spans": [[5, 5]], "type": "NominalConstant"},
+            ],
+            "edges": [
+                {"start": 0, "end": 1, "label": "pred.arg.2"},
+                {"start": 1, "end": 2, "label": "func.arg"},
+                {"start": 1, "end": 3, "label": "func.arg"},
+                {"start": 2, "end": 4, "label": "as:modification"},
+                {"start": 3, "end": 4, "label": "as:modification"},
+                {"start": 4, "end": 5, "label": "as:modification"},
+            ],
+        },
+    }
+
+    standardized, _ = normalize_lingua_edges_to_predicate_nodes(graph)
+    simplified, stats = simplify_lingua_predicate_nodes_to_edges(standardized)
+
+    assert stats["collapsed_relation_nodes:as:modification"] == 3
+    assert_same_graph_shape(simplified, graph)
+
+
+def test_simplify_lingua_predicate_nodes_to_edges_keeps_cycle_creating_relation_node():
+    graph = {
+        "meta": {},
+        "words": ["get", "at", "immediately"],
+        "graph": {
+            "nodes": [
+                {"spans": [[1, 1]], "type": "ModificationalFunctor"},
+                {"spans": [[0, 0]], "type": "FactualPredicator"},
+                {"spans": [[2, 2]], "type": "ModificationalConstant"},
+                {"spans": "Modification", "type": "ModificationalFunctor"},
+            ],
+            "edges": [
+                {"start": 0, "end": 1, "label": "variable"},
+                {"start": 3, "end": 0, "label": "variable"},
+                {"start": 3, "end": 1, "label": "body"},
+            ],
+        },
+    }
+
+    simplified, stats = simplify_lingua_predicate_nodes_to_edges(graph)
+
+    assert stats == {
+        "skipped_relation_nodes_that_would_create_cycle": 1,
+        "skipped_relation_nodes_that_would_create_cycle:as:modification": 1,
+    }
+    assert_same_graph_shape(simplified, graph)

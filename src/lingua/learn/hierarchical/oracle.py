@@ -132,7 +132,10 @@ class HierarchicalOracleUnit:
 
     @property
     def has_overlapping_roles(self) -> bool:
-        return any(len(token_label.labels) > 1 for token_label in self.token_labels)
+        return any(
+            any("+" in label for label in token_label.labels)
+            for token_label in self.token_labels
+        )
 
     def to_dict(self) -> dict[str, Any]:
         shared_links = [child.to_dict() for child in self.children if child.is_shared]
@@ -211,7 +214,7 @@ def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExa
     self_token_ids = tuple(_token_indices(node["spans"]) for node in nodes)
     desc_token_ids = _descendant_token_ids(len(nodes), outgoing, self_token_ids, topological_order)
 
-    content_reference_depths = _same_token_content_reference_depths(
+    content_depths = _same_token_content_depths(
         nodes=nodes,
         outgoing=outgoing,
         desc_token_ids=desc_token_ids,
@@ -233,21 +236,7 @@ def extract_hierarchical_oracle(sample: dict[str, Any]) -> HierarchicalOracleExa
             )
             for _, edge in outgoing[node_index]
         )
-        view_kind = _content_view_kind(content_reference_depths.get(node_index, 0))
-        view_kind, children = _encode_complex_modification_attachment_view(
-            node_index=node_index,
-            nodes=nodes,
-            input_token_ids=input_token_ids,
-            children=children,
-            current_view_kind=view_kind,
-        )
-        view_kind, children = _encode_whether_scope_view(
-            node_index=node_index,
-            nodes=nodes,
-            input_token_ids=input_token_ids,
-            children=children,
-            current_view_kind=view_kind,
-        )
+        view_kind = _content_view_kind(content_depths.get(node_index, 0))
         children = _resolve_sibling_shared_args(children, words)
         token_labels = _token_labels(
             words=words,
@@ -355,45 +344,22 @@ def _content_view_kind(depth: int) -> str:
     return CONTENT_VIEW
 
 
-def _same_token_content_reference_depths(
+def _same_token_content_depths(
     *,
     nodes: list[dict[str, Any]],
     outgoing: dict[int, list[tuple[int, dict[str, Any]]]],
     desc_token_ids: tuple[tuple[int, ...], ...],
     topological_order: tuple[int, ...],
 ) -> dict[int, int]:
-    """Find same-token-set children and assign explicit content-option depth."""
+    """Find same-token-set children and assign content-view depth."""
 
     same_token_children: dict[int, list[int]] = defaultdict(list)
-    for node_index, node in enumerate(nodes):
+    for node_index, _node in enumerate(nodes):
         input_token_set = set(desc_token_ids[node_index])
-        aux_kind = _aux_kind(node)
-        node_children = [edge for _, edge in outgoing.get(node_index, [])]
-        if aux_kind == "Modification":
-            variable_children = [
-                edge for edge in node_children if edge.get("label") == "variable"
-            ]
-            body_children = [
-                edge for edge in node_children if edge.get("label") == "body"
-            ]
-            if len(variable_children) != 1 or len(body_children) != 1:
-                continue
-            variable_index = int(variable_children[0]["end"])
-            body_index = int(body_children[0]["end"])
-            if set(desc_token_ids[body_index]) != input_token_set:
-                continue
-            if not set(desc_token_ids[variable_index]).issubset(input_token_set):
-                continue
-            same_token_children[node_index].append(body_index)
-        elif aux_kind == "Whether":
-            func_arg_children = [
-                edge for edge in node_children if edge.get("label") == "func.arg"
-            ]
-            if len(func_arg_children) != 1:
-                continue
-            func_arg_index = int(func_arg_children[0]["end"])
-            if set(desc_token_ids[func_arg_index]) == input_token_set:
-                same_token_children[node_index].append(func_arg_index)
+        for _, edge in outgoing.get(node_index, []):
+            child_index = int(edge["end"])
+            if set(desc_token_ids[child_index]) == input_token_set:
+                same_token_children[node_index].append(child_index)
 
     content_depths: dict[int, int] = {}
     for node_index in topological_order:
@@ -432,111 +398,6 @@ def _child_from_edge(
         is_discontinuous=_is_discontinuous(token_ids),
         shared_arg_links=(),
     )
-
-
-def _encode_complex_modification_attachment_view(
-    *,
-    node_index: int,
-    nodes: list[dict[str, Any]],
-    input_token_ids: tuple[int, ...],
-    children: tuple[HierarchicalOracleChild, ...],
-    current_view_kind: str,
-) -> tuple[str, tuple[HierarchicalOracleChild, ...]]:
-    """Represent complex Modification wrappers as default-view targets.
-
-    A complex wrapper has the same covered token set as its body child.  In that
-    shape the wrapper does not decompose the modifier content again; it states
-    which internal token set is the externally modified variable.  The body is a
-    reference to the same token set's content option, so it is kept in metadata but
-    does not receive token labels in the attachment view.
-    """
-
-    if _aux_kind(nodes[node_index]) != "Modification":
-        return current_view_kind, children
-
-    variable_children = [
-        child
-        for child in children
-        if child.edge_label == "variable" or child.role == "VARIABLE"
-    ]
-    body_children = [
-        child
-        for child in children
-        if child.edge_label == "body" or child.role == "BODY"
-    ]
-    if len(variable_children) != 1 or len(body_children) != 1:
-        return current_view_kind, children
-
-    variable_child = variable_children[0]
-    body_child = body_children[0]
-    input_token_set = set(input_token_ids)
-    if set(body_child.token_ids) != input_token_set:
-        return current_view_kind, children
-    if not set(variable_child.token_ids).issubset(set(body_child.token_ids)):
-        return current_view_kind, children
-
-    rewritten_children = []
-    for child in children:
-        if child is body_child:
-            rewritten_children.append(
-                replace(
-                    child,
-                    role="BODY_REF",
-                    label_token_ids=(),
-                    label_tokens=(),
-                )
-            )
-        else:
-            rewritten_children.append(child)
-
-    return current_view_kind, tuple(rewritten_children)
-
-
-def _encode_whether_scope_view(
-    *,
-    node_index: int,
-    nodes: list[dict[str, Any]],
-    input_token_ids: tuple[int, ...],
-    children: tuple[HierarchicalOracleChild, ...],
-    current_view_kind: str,
-) -> tuple[str, tuple[HierarchicalOracleChild, ...]]:
-    """Separate same-span Whether default targets from inner content targets.
-
-    A Whether wrapper usually covers exactly the same token set as its single
-    func.arg child.  The inner child owns the content-view decomposition; this
-    default view only says that the same token set is wrapped by Whether.
-    """
-
-    if _aux_kind(nodes[node_index]) != "Whether":
-        return current_view_kind, children
-
-    func_arg_children = [
-        child
-        for child in children
-        if child.edge_label == "func.arg" or child.role == "FUNC_ARG"
-    ]
-    if len(func_arg_children) != 1:
-        return current_view_kind, children
-
-    func_arg_child = func_arg_children[0]
-    if set(func_arg_child.token_ids) != set(input_token_ids):
-        return current_view_kind, children
-
-    rewritten_children = []
-    for child in children:
-        if child is func_arg_child:
-            rewritten_children.append(
-                replace(
-                    child,
-                    role="FUNC_ARG_REF",
-                    label_token_ids=(),
-                    label_tokens=(),
-                )
-            )
-        else:
-            rewritten_children.append(child)
-
-    return current_view_kind, tuple(rewritten_children)
 
 
 def _resolve_sibling_shared_args(
@@ -630,8 +491,6 @@ def _role_overlap_priority(role: str) -> int:
         "ARG3": 80,
         "ARG4": 75,
         "FUNC_ARG": 70,
-        "FUNC_ARG_REF": 10,
-        "BODY_REF": 10,
         "BODY": 10,
     }
     return priorities.get(role, 50)
@@ -643,34 +502,39 @@ def _token_labels(
     self_token_ids: tuple[int, ...],
     children: tuple[HierarchicalOracleChild, ...],
 ) -> tuple[TokenLabel, ...]:
-    labels_by_token: dict[int, list[str]] = defaultdict(list)
     input_token_set = set(input_token_ids)
+    roles_by_token: dict[int, set[str]] = {token_id: set() for token_id in input_token_ids}
 
-    _add_bio_labels(labels_by_token, self_token_ids, input_token_set, "HEAD")
+    for token_id in self_token_ids:
+        if token_id in input_token_set:
+            roles_by_token[token_id].add("HEAD")
     for child in children:
-        _add_bio_labels(labels_by_token, child.label_token_ids, input_token_set, child.role)
+        role = child.role
+        for token_id in child.token_ids:
+            if token_id in input_token_set:
+                roles_by_token[token_id].add(role)
+
+    labels_by_token: dict[int, str] = {}
+    previous_role_set = None
+    for token_id in input_token_ids:
+        roles = roles_by_token.get(token_id, set())
+        if not roles:
+            labels_by_token[token_id] = "O"
+            previous_role_set = None
+            continue
+        role_set = "+".join(sorted(roles))
+        prefix = "I" if role_set == previous_role_set else "B"
+        labels_by_token[token_id] = f"{prefix}-{role_set}"
+        previous_role_set = role_set
 
     return tuple(
         TokenLabel(
             token_id=token_id,
             token=words[token_id] if token_id < len(words) else "",
-            labels=tuple(sorted(set(labels_by_token.get(token_id, ["O"])))),
+            labels=(labels_by_token.get(token_id, "O"),),
         )
         for token_id in input_token_ids
     )
-
-
-def _add_bio_labels(
-    labels_by_token: dict[int, list[str]],
-    token_ids: tuple[int, ...],
-    input_token_set: set[int],
-    role: str,
-) -> None:
-    previous_token_id = None
-    for token_id in sorted(token_id for token_id in token_ids if token_id in input_token_set):
-        prefix = "I" if previous_token_id is not None and token_id == previous_token_id + 1 else "B"
-        labels_by_token[token_id].append(f"{prefix}-{role}")
-        previous_token_id = token_id
 
 
 def _unit_pos(node: dict[str, Any]) -> str:

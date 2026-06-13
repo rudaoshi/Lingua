@@ -220,22 +220,22 @@ def test_encodes_sibling_contained_descendants_as_shared_args():
     oracle = extract_hierarchical_oracle(sample).to_dict()
     modification_unit = oracle["units"][0]
     body_child = next(
-        child for child in modification_unit["children"] if child["role"] == "BODY_REF"
+        child for child in modification_unit["children"] if child["role"] == "BODY"
     )
 
     assert modification_unit["input_token_ids"] == [0, 1]
     assert modification_unit["view_kind"] == DEFAULT_VIEW
-    assert not modification_unit["has_overlapping_roles"]
+    assert modification_unit["has_overlapping_roles"]
     assert modification_unit["has_shared_arg"]
     assert labels_by_token(modification_unit) == {
-        0: ["B-VARIABLE"],
-        1: ["O"],
+        0: ["B-BODY+VARIABLE"],
+        1: ["B-BODY"],
     }
     assert body_child["token_ids"] == [0, 1]
-    assert body_child["label_token_ids"] == []
+    assert body_child["label_token_ids"] == [1]
     assert body_child["shared_arg_links"] == [
         {
-            "owner_role": "BODY_REF",
+            "owner_role": "BODY",
             "shared_role": "VARIABLE",
             "token_ids": [0],
             "tokens": ["volume"],
@@ -247,7 +247,7 @@ def test_encodes_sibling_contained_descendants_as_shared_args():
     assert modification_unit["shared_arg_links"] == body_child["shared_arg_links"]
 
 
-def test_complex_modification_wrapper_uses_default_view_body_ref():
+def test_complex_modification_wrapper_keeps_body_labels_in_default_view():
     sample = {
         "lingua": {
             "words": ["nothing", "to", "do", "with", "Israel"],
@@ -281,18 +281,18 @@ def test_complex_modification_wrapper_uses_default_view_body_ref():
     assert attach_unit["view_kind"] == DEFAULT_VIEW
     assert attach_unit["input_token_ids"] == [0, 1, 2, 3, 4]
     assert labels_by_token(attach_unit) == {
-        0: ["B-VARIABLE"],
-        1: ["O"],
-        2: ["O"],
-        3: ["O"],
-        4: ["O"],
+        0: ["B-BODY+VARIABLE"],
+        1: ["B-BODY"],
+        2: ["I-BODY"],
+        3: ["I-BODY"],
+        4: ["I-BODY"],
     }
     assert [
         (child["role"], child["token_ids"], child["label_token_ids"])
         for child in attach_unit["children"]
     ] == [
         ("VARIABLE", [0], [0]),
-        ("BODY_REF", [0, 1, 2, 3, 4], []),
+        ("BODY", [0, 1, 2, 3, 4], [1, 2, 3, 4]),
     ]
 
     assert content_unit["view_kind"] == CONTENT_VIEW
@@ -305,7 +305,7 @@ def test_complex_modification_wrapper_uses_default_view_body_ref():
     }
 
 
-def test_same_span_whether_wrapper_uses_default_view_func_arg_ref():
+def test_same_span_whether_wrapper_keeps_func_arg_labels_in_default_view():
     sample = {
         "lingua": {
             "words": ["Are", "you", "ready"],
@@ -336,15 +336,15 @@ def test_same_span_whether_wrapper_uses_default_view_func_arg_ref():
     assert whether_unit["unit_pos"] == "GeneralFunctor"
     assert whether_unit["aux_kind"] == "Whether"
     assert labels_by_token(whether_unit) == {
-        0: ["O"],
-        1: ["O"],
-        2: ["O"],
+        0: ["B-FUNC_ARG"],
+        1: ["I-FUNC_ARG"],
+        2: ["I-FUNC_ARG"],
     }
     assert [
         (child["role"], child["token_ids"], child["label_token_ids"])
         for child in whether_unit["children"]
     ] == [
-        ("FUNC_ARG_REF", [0, 1, 2], []),
+        ("FUNC_ARG", [0, 1, 2], [0, 1, 2]),
     ]
 
     assert content_unit["unit_pos"] == "FactualPredicator"
@@ -395,16 +395,16 @@ def test_question_punctuation_stays_under_whether_default_view():
     assert whether_unit["unit_pos"] == "GeneralFunctor"
     assert whether_unit["aux_kind"] == "Whether"
     assert labels_by_token(whether_unit) == {
-        0: ["O"],
-        1: ["O"],
-        2: ["O"],
-        3: ["O"],
+        0: ["B-FUNC_ARG"],
+        1: ["I-FUNC_ARG"],
+        2: ["I-FUNC_ARG"],
+        3: ["I-FUNC_ARG"],
     }
     assert [
         (child["role"], child["token_ids"], child["label_token_ids"])
         for child in whether_unit["children"]
     ] == [
-        ("FUNC_ARG_REF", [0, 1, 2, 3], []),
+        ("FUNC_ARG", [0, 1, 2, 3], [0, 1, 2, 3]),
     ]
 
     assert punctuation_unit["view_kind"] == CONTENT_VIEW
@@ -426,6 +426,40 @@ def test_question_punctuation_stays_under_whether_default_view():
     assert proposition_unit["view_kind"] == DEFAULT_VIEW
     assert proposition_unit["unit_pos"] == "FactualPredicator"
     assert question_unit["input_token_ids"] == [3]
+
+
+def test_same_token_child_of_any_parent_gets_content_view():
+    sample = {
+        "lingua": {
+            "words": ["who", "left"],
+            "graph": {
+                "nodes": [
+                    {"spans": "Ref", "type": "ReferentialPredicator"},
+                    {"spans": [[1, 1]], "type": "FactualPredicator"},
+                    {"spans": [[0, 0]], "type": "GeneralFunctor"},
+                ],
+                "edges": [
+                    {"start": 0, "end": 1, "label": "func.arg"},
+                    {"start": 1, "end": 2, "label": "pred.arg.1"},
+                ],
+            },
+        }
+    }
+
+    oracle = extract_hierarchical_oracle(sample).to_dict()
+    ref_unit = oracle["units"][0]
+    content_unit = oracle["units"][1]
+
+    assert ref_unit["input_token_ids"] == [0, 1]
+    assert content_unit["input_token_ids"] == [0, 1]
+    assert ref_unit["view_kind"] == DEFAULT_VIEW
+    assert content_unit["view_kind"] == CONTENT_VIEW
+    assert ref_unit["unit_pos"] == "ReferentialPredicator"
+    assert ref_unit["aux_kind"] == "Ref"
+    assert labels_by_token(ref_unit) == {
+        0: ["B-FUNC_ARG"],
+        1: ["I-FUNC_ARG"],
+    }
 
 
 def test_marks_overlapping_roles_when_a_token_gets_multiple_layer_labels():
@@ -450,7 +484,7 @@ def test_marks_overlapping_roles_when_a_token_gets_multiple_layer_labels():
     root_unit = oracle["units"][0]
 
     assert root_unit["has_overlapping_roles"]
-    assert labels_by_token(root_unit)[0] == ["B-ARG1", "B-HEAD"]
+    assert labels_by_token(root_unit)[0] == ["B-ARG1+HEAD"]
 
 
 def test_rejects_cyclic_graphs():
@@ -474,7 +508,7 @@ def test_rejects_cyclic_graphs():
         extract_hierarchical_oracle(sample)
 
 
-def test_corpus_has_no_query_context_decode_conflicts():
+def test_corpus_has_no_active_unit_decode_conflicts():
     failures = []
 
     for path in DATA_PATHS:
@@ -493,8 +527,7 @@ def test_corpus_has_no_query_context_decode_conflicts():
                     key = (
                         tuple(example.input_token_ids),
                         example.view_kind,
-                        example.query_role_by_token,
-                        example.shared_role_by_token,
+                        example.unit_pos,
                     )
                     grouped[key].add(
                         (

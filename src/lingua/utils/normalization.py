@@ -22,6 +22,7 @@ RELATION_EDGE_TO_AUX_NODE = {
     "repeat": ("Repeat", "OtherConstant"),
     "vocative": ("Vocative", "ModificationalFunctor"),
 }
+EXPRESSION_LIKE_AUX_LABELS = {"Expression", "List", "Parataxis"}
 AS_RELATION_PRIORITIES = {
     "appositive": 41,
     "discourse": 42,
@@ -362,10 +363,247 @@ def standardize_lingua_edges_to_predicate_nodes(
     )
 
 
+def simplify_lingua_predicate_nodes_to_edges(graph_data: GraphData) -> tuple[GraphData, dict[str, int]]:
+    """Collapse canonical relation aux nodes back to direct ``as:*`` edges.
+
+    This is the canonical dual of ``standardize_lingua_edges_to_predicate_nodes``:
+    a relation node shaped like ``Modification(variable=H, body=B)`` becomes
+    ``B --as:modification--> H``; similarly ``Punctuation(pred.arg.1=T,
+    pred.arg.2=P)`` becomes ``P --as:punctuation--> T``.
+
+    The transform is intentionally structural rather than provenance-based.
+    It collapses aux nodes whose label/type and role shape match a reified
+    relation. It is therefore a canonical projection, not a lossless undo of
+    whether the aux node existed in the original annotation.
+    """
+
+    simplified = copy.deepcopy(graph_data)
+    nodes = simplified["graph"]["nodes"]
+    edges = simplified["graph"]["edges"]
+    stats: Counter[str] = Counter()
+
+    outgoing: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for edge in edges:
+        outgoing[int(edge["start"])].append(edge)
+
+    relation_infos: dict[int, dict[str, Any]] = {}
+    for node_index, node in enumerate(nodes):
+        relation_label = aux_node_to_relation_edge(node)
+        if relation_label is None:
+            continue
+        role1, role2 = relation_role_labels(node)
+        outgoing_edges = outgoing.get(node_index, [])
+        role1_edges = [edge for edge in outgoing_edges if edge.get("label") == role1]
+        role2_edges = [edge for edge in outgoing_edges if edge.get("label") == role2]
+        role_edges = role1_edges + role2_edges
+        if role1 == role2:
+            stats["skipped_relation_nodes_with_symmetric_roles"] += 1
+            continue
+        if len(role1_edges) != 1 or len(role2_edges) != 1:
+            stats["skipped_relation_nodes_with_non_binary_roles"] += 1
+            continue
+        if len(role_edges) != len(outgoing_edges):
+            stats["skipped_relation_nodes_with_extra_outgoing"] += 1
+            continue
+
+        relation_infos[node_index] = {
+            "label": relation_label,
+            "role1": role1,
+            "role2": role2,
+            "target": int(role1_edges[0]["end"]),
+            "source": int(role2_edges[0]["end"]),
+            "confidence": relation_confidence(node, role1_edges[0], role2_edges[0]),
+        }
+
+    if not relation_infos:
+        return simplified, {}
+
+    def root_projection(index: int, seen: set[int] | None = None) -> int:
+        if seen is None:
+            seen = set()
+        if index in seen:
+            return index
+        seen.add(index)
+        info = relation_infos.get(index)
+        if info is None:
+            return index
+        return root_projection(int(info["source"]), seen)
+
+    def target_projection(index: int) -> int:
+        return root_projection(index)
+
+    def source_projection(index: int, seen: set[int] | None = None) -> int:
+        if seen is None:
+            seen = set()
+        if index in seen:
+            return index
+        seen.add(index)
+        info = relation_infos.get(index)
+        if info is not None:
+            return target_projection(int(info["target"]))
+
+        grouped_source = grouped_relation_source(index)
+        if grouped_source is not None:
+            return grouped_source
+        return index
+
+    def grouped_relation_source(index: int) -> int | None:
+        child_relation_targets: list[int] = []
+        for edge in outgoing.get(index, []):
+            if edge.get("label") != "func.arg":
+                continue
+            child = int(edge["end"])
+            child_info = relation_infos.get(child)
+            if child_info is None or child_info.get("label") != "as:modification":
+                continue
+            child_relation_targets.append(target_projection(int(child_info["target"])))
+        if not child_relation_targets:
+            return None
+        unique_targets = set(child_relation_targets)
+        if len(unique_targets) != 1:
+            return None
+        return child_relation_targets[0]
+
+    def path_exists(adjacency: dict[int, list[int]], start: int, target: int) -> bool:
+        stack = [start]
+        seen: set[int] = set()
+        while stack:
+            node = stack.pop()
+            if node == target:
+                return True
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(adjacency.get(node, []))
+        return False
+
+    def base_adjacency_without_collapsed_relations() -> dict[int, list[int]]:
+        adjacency: dict[int, list[int]] = defaultdict(list)
+        for edge in edges:
+            start = int(edge["start"])
+            end = int(edge["end"])
+            if start in relation_infos:
+                continue
+            if end in relation_infos:
+                end = root_projection(end)
+            if start != end:
+                adjacency[start].append(end)
+        return adjacency
+
+    while True:
+        adjacency = base_adjacency_without_collapsed_relations()
+        unsafe_relation_nodes: list[int] = []
+        for relation_node, info in sorted(relation_infos.items()):
+            start = source_projection(int(info["source"]))
+            end = target_projection(int(info["target"]))
+            if start == end or path_exists(adjacency, end, start):
+                unsafe_relation_nodes.append(relation_node)
+                continue
+            adjacency[start].append(end)
+        if not unsafe_relation_nodes:
+            break
+        for relation_node in unsafe_relation_nodes:
+            info = relation_infos.pop(relation_node)
+            stats["skipped_relation_nodes_that_would_create_cycle"] += 1
+            stats[f"skipped_relation_nodes_that_would_create_cycle:{info['label']}"] += 1
+
+    if not relation_infos:
+        return simplified, dict(stats)
+
+    relation_nodes = set(relation_infos)
+
+    def remap(index: int) -> int | None:
+        if index in relation_nodes:
+            return None
+        removed_before = sum(1 for relation_node in relation_nodes if relation_node < index)
+        return index - removed_before
+
+    new_nodes = [
+        copy.deepcopy(node)
+        for index, node in enumerate(nodes)
+        if index not in relation_nodes
+    ]
+
+    new_edges: list[dict[str, Any]] = []
+    for edge in edges:
+        start = int(edge["start"])
+        end = int(edge["end"])
+        if start in relation_nodes:
+            continue
+        if end in relation_nodes:
+            end = root_projection(end)
+
+        new_start = remap(start)
+        new_end = remap(end)
+        if new_start is None or new_end is None or new_start == new_end:
+            continue
+
+        new_edge = copy.deepcopy(edge)
+        new_edge["start"] = new_start
+        new_edge["end"] = new_end
+        new_edges.append(new_edge)
+
+    for _relation_node, info in sorted(relation_infos.items()):
+        start = source_projection(int(info["source"]))
+        end = target_projection(int(info["target"]))
+        new_start = remap(start)
+        new_end = remap(end)
+        if new_start is None or new_end is None or new_start == new_end:
+            stats["skipped_collapsed_relation_edges_with_invalid_endpoint"] += 1
+            continue
+        edge = {
+            "start": new_start,
+            "end": new_end,
+            "label": info["label"],
+        }
+        if info.get("confidence") is not None:
+            edge["confidence"] = info["confidence"]
+        new_edges.append(edge)
+        stats["collapsed_relation_nodes"] += 1
+        stats[f"collapsed_relation_nodes:{info['label']}"] += 1
+
+    simplified["graph"]["nodes"] = new_nodes
+    simplified["graph"]["edges"] = _dedupe_edges(new_edges)
+    return simplified, dict(stats)
+
+
 def relation_edge_to_aux_node(edge_label: str) -> tuple[str, str]:
     if edge_label in RELATION_EDGE_TO_AUX_NODE:
         return RELATION_EDGE_TO_AUX_NODE[edge_label]
     return edge_label[:1].upper() + edge_label[1:], "OtherConstant"
+
+
+def aux_node_to_relation_edge(node: dict[str, Any]) -> str | None:
+    spans = node.get("spans")
+    node_type = node.get("type")
+    if not isinstance(spans, str):
+        return None
+
+    for edge_label, aux_node in RELATION_EDGE_TO_AUX_NODE.items():
+        if aux_node == (spans, node_type):
+            return f"as:{edge_label}"
+
+    if (
+        node_type == "OtherConstant"
+        and spans
+        and spans not in EXPRESSION_LIKE_AUX_LABELS
+    ):
+        return f"as:{spans[:1].lower()}{spans[1:]}"
+    return None
+
+
+def relation_confidence(
+    node: dict[str, Any],
+    role1_edge: dict[str, Any],
+    role2_edge: dict[str, Any],
+) -> Any:
+    if "confidence" in node:
+        return node["confidence"]
+    role1_confidence = role1_edge.get("confidence")
+    role2_confidence = role2_edge.get("confidence")
+    if role1_confidence == role2_confidence:
+        return role1_confidence
+    return None
 
 
 def relation_role_labels(node: dict[str, Any]) -> tuple[str, str]:
