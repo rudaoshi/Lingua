@@ -103,7 +103,7 @@ def evaluate_hierarchical_model(
     device: torch.device,
     threshold: float = 0.5,
     force_one_role_per_unit_token: bool = True,
-    decode_strategy: str = "two_pass",
+    decode_strategy: str = "independent",
 ) -> dict[str, float]:
     model.eval()
     total_units = 0

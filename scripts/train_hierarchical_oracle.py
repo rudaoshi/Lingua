@@ -74,7 +74,7 @@ def main() -> int:
     parser.add_argument(
         "--decode_strategy",
         choices=("two_pass", "exhaustive", "independent"),
-        default="two_pass",
+        default="independent",
         help="Structured decoding strategy for evaluation.",
     )
     parser.add_argument("--seed", type=int, default=13)

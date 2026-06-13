@@ -515,7 +515,7 @@ class HierarchicalTokenSetParser(nn.Module):
         self,
         output: dict[str, torch.Tensor],
         active_unit_mask: torch.Tensor,
-        strategy: str = "two_pass",
+        strategy: str = "independent",
         top_k_unit_pos: int = 4,
         top_k_aux_kind: int = 4,
         role_score_weight: float = 1.0,
