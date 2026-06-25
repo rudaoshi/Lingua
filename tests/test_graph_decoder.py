@@ -482,6 +482,135 @@ def test_word_lingua_validation_requires_full_edge_label_in_training_vocab():
     assert any("not in training vocabulary" in error for error in errors)
 
 
+def test_word_lingua_validation_rejects_punctuation_pred_arg_parent():
+    labels = ["pred.arg.1"]
+    label2id = {label: idx for idx, label in enumerate(labels)}
+    id2label = {idx: label for label, idx in label2id.items()}
+    decoder = GreedyPatternDecoder(
+        stats=None,
+        id2label=id2label,
+        label2id=label2id,
+        id2node_type={0: "PunctuationalConstant", 1: "NominalConstant"},
+        arc_threshold=0.5,
+    )
+
+    graph = GPGraph()
+    graph.words = [",", "word"]
+    comma = graph.add_node(GPGPhraseNode(spans=[(0, 0)], pos="PunctuationalConstant"))
+    word = graph.add_node(GPGPhraseNode(spans=[(1, 1)], pos="NominalConstant"))
+    graph.add_edge(comma, word, GPGEdge(label="pred.arg.1"))
+
+    errors = decoder._validate_word_lingua_graph(
+        graph,
+        node_types=["PunctuationalConstant", "NominalConstant"],
+        decoding_info={},
+    )
+
+    assert any("PunctuationalConstant logical predicate parent" in error for error in errors)
+
+
+def test_word_lingua_validation_rejects_pure_punctuation_predicator_node():
+    labels = ["pred.arg.1"]
+    label2id = {label: idx for idx, label in enumerate(labels)}
+    id2label = {idx: label for label, idx in label2id.items()}
+    decoder = GreedyPatternDecoder(
+        stats=None,
+        id2label=id2label,
+        label2id=label2id,
+        id2node_type={0: "LogicalPredicator", 1: "NominalConstant"},
+        arc_threshold=0.5,
+    )
+
+    graph = GPGraph()
+    graph.words = [",", "word"]
+    comma = graph.add_node(GPGPhraseNode(spans=[(0, 0)], pos="LogicalPredicator"))
+    word = graph.add_node(GPGPhraseNode(spans=[(1, 1)], pos="NominalConstant"))
+    graph.add_edge(comma, word, GPGEdge(label="pred.arg.1"))
+
+    errors = decoder._validate_word_lingua_graph(
+        graph,
+        node_types=["LogicalPredicator", "NominalConstant"],
+        decoding_info={},
+    )
+
+    assert any("pure punctuation/symbol predicator node" in error for error in errors)
+
+
+def test_decoder_coerces_pure_punctuation_predicator_node_type():
+    labels = ["next_word"]
+    label2id = {label: idx for idx, label in enumerate(labels)}
+    id2label = {idx: label for label, idx in label2id.items()}
+    id2node_type = {
+        0: "LogicalPredicator",
+        1: "NominalConstant",
+        2: "PunctuationalConstant",
+    }
+    decoder = GreedyPatternDecoder(
+        stats=None,
+        id2label=id2label,
+        label2id=label2id,
+        id2node_type=id2node_type,
+        arc_threshold=0.99,
+        enforce_single_root=False,
+        decoder_mode="sdp_graph",
+    )
+
+    words = [",", "word"]
+    node_type_preds = np.array([0, 1])
+    child_of_whether = np.zeros(len(words), dtype=np.int64)
+    arc_logits = np.full((len(words), len(words)), -8.0, dtype=np.float32)
+    rel_logits = np.full((len(words), len(words), len(labels)), -8.0, dtype=np.float32)
+    is_root_logits = np.zeros((len(words), 2), dtype=np.float32)
+
+    graph, info = decoder.decode(
+        words=words,
+        arc_logits=arc_logits,
+        rel_logits=rel_logits,
+        node_type_preds=node_type_preds,
+        child_of_whether_preds=child_of_whether,
+        is_root_logits=is_root_logits,
+    )
+
+    comma = node_at(graph, 0)
+    assert comma.pos == "PunctuationalConstant"
+    assert info["node_type_repairs"] == [
+        {
+            "token_index": 0,
+            "token": ",",
+            "old_type": "LogicalPredicator",
+            "new_type": "PunctuationalConstant",
+            "reason": "pure_punctuation_or_symbol_cannot_be_predicator",
+        }
+    ]
+
+
+def test_word_lingua_validation_allows_duplicate_label_component_when_in_vocab():
+    labels = ["func.arg+func.arg"]
+    label2id = {label: idx for idx, label in enumerate(labels)}
+    id2label = {idx: label for label, idx in label2id.items()}
+    decoder = GreedyPatternDecoder(
+        stats=None,
+        id2label=id2label,
+        label2id=label2id,
+        id2node_type={0: "ConjunctionalFunctor", 1: "NominalConstant"},
+        arc_threshold=0.5,
+    )
+
+    graph = GPGraph()
+    graph.words = ["or", "loss"]
+    or_node = graph.add_node(GPGPhraseNode(spans=[(0, 0)], pos="ConjunctionalFunctor"))
+    loss = graph.add_node(GPGPhraseNode(spans=[(1, 1)], pos="NominalConstant"))
+    graph.add_edge(or_node, loss, GPGEdge(label="func.arg+func.arg"))
+
+    errors = decoder._validate_word_lingua_graph(
+        graph,
+        node_types=["ConjunctionalFunctor", "NominalConstant"],
+        decoding_info={},
+    )
+
+    assert errors == []
+
+
 def test_ilp_rejects_nonhierarchy_edge_between_sibling_aux_children():
     labels = ["@expression", "@modification_of", "as:modification", "@lower"]
     label2id = {label: idx for idx, label in enumerate(labels)}
@@ -532,4 +661,110 @@ def test_ilp_rejects_nonhierarchy_edge_between_sibling_aux_children():
     assert graph.get_edge(node_at(graph, 0), node_at(graph, 2)).label == "@modification_of"
     assert graph.get_edge(node_at(graph, 1), node_at(graph, 2)) is None
     assert info["ilp"]["aux_child_subgraph_constraints"] > 0
+    assert "validation_errors" not in info
+
+
+def test_ilp_as_shorthand_edge_excludes_other_outgoing_edges():
+    labels = ["as:modification", "@expression"]
+    label2id = {label: idx for idx, label in enumerate(labels)}
+    id2label = {idx: label for label, idx in label2id.items()}
+    id2node_type = {
+        0: "NominalConstant",
+        1: "NominalConstant",
+        2: "NominalConstant",
+    }
+    decoder = GreedyPatternDecoder(
+        stats=None,
+        id2label=id2label,
+        label2id=label2id,
+        id2node_type=id2node_type,
+        arc_threshold=0.5,
+        decoder_mode="ilp",
+        ilp_time_limit=5,
+    )
+
+    words = ["head", "short", "tail"]
+    node_type_preds = np.array([0, 1, 2])
+    child_of_whether = np.zeros(len(words), dtype=np.int64)
+    arc_logits = np.full((len(words), len(words)), -12.0, dtype=np.float32)
+    rel_logits = np.full((len(words), len(words), len(labels)), -12.0, dtype=np.float32)
+    is_root_logits = np.full((len(words), 2), -8.0, dtype=np.float32)
+    is_root_logits[0, 1] = 8.0
+
+    def prefer(parent, child, label, *, arc_logit=10.0, rel_logit=12.0):
+        arc_logits[parent, child] = arc_logit
+        rel_logits[parent, child, label2id[label]] = rel_logit
+
+    prefer(0, 1, "as:modification", arc_logit=12.0)
+    # This edge is attractive, but selecting it with 0 -> 1 as:modification
+    # would give node 0 an invalid shorthand plus extra outgoing structure.
+    prefer(0, 2, "@expression", arc_logit=11.0)
+    prefer(1, 2, "@expression", arc_logit=9.0)
+
+    graph, info = decoder.decode(
+        words=words,
+        arc_logits=arc_logits,
+        rel_logits=rel_logits,
+        node_type_preds=node_type_preds,
+        child_of_whether_preds=child_of_whether,
+        is_root_logits=is_root_logits,
+    )
+
+    assert graph.get_edge(node_at(graph, 0), node_at(graph, 1)).label == "as:modification"
+    assert graph.get_edge(node_at(graph, 0), node_at(graph, 2)) is None
+    assert graph.get_edge(node_at(graph, 1), node_at(graph, 2)).label == "@expression"
+    assert info["ilp"]["as_shorthand_exclusion_constraints"] > 0
+    assert "validation_errors" not in info
+
+
+def test_ilp_rejects_punctuation_pred_arg_parent_even_when_high_scoring():
+    labels = ["pred.arg.1", "@expression"]
+    label2id = {label: idx for idx, label in enumerate(labels)}
+    id2label = {idx: label for label, idx in label2id.items()}
+    id2node_type = {
+        0: "PunctuationalConstant",
+        1: "NominalConstant",
+        2: "FactualPredicator",
+    }
+    decoder = GreedyPatternDecoder(
+        stats=None,
+        id2label=id2label,
+        label2id=label2id,
+        id2node_type=id2node_type,
+        arc_threshold=0.5,
+        decoder_mode="ilp",
+        ilp_time_limit=5,
+    )
+
+    words = [",", "Alice", "likes"]
+    node_type_preds = np.array([0, 1, 2])
+    child_of_whether = np.zeros(len(words), dtype=np.int64)
+    arc_logits = np.full((len(words), len(words)), -12.0, dtype=np.float32)
+    rel_logits = np.full((len(words), len(words), len(labels)), -12.0, dtype=np.float32)
+    is_root_logits = np.full((len(words), 2), -8.0, dtype=np.float32)
+    is_root_logits[2, 1] = 8.0
+
+    def prefer(parent, child, label, *, arc_logit=10.0, rel_logit=12.0):
+        arc_logits[parent, child] = arc_logit
+        rel_logits[parent, child, label2id[label]] = rel_logit
+
+    prefer(2, 0, "@expression", arc_logit=12.0)
+    prefer(2, 1, "pred.arg.1", arc_logit=12.0)
+    # This edge is even more attractive, but punctuation tokens cannot be
+    # logical predicate parents.
+    prefer(0, 1, "pred.arg.1", arc_logit=14.0, rel_logit=14.0)
+
+    graph, info = decoder.decode(
+        words=words,
+        arc_logits=arc_logits,
+        rel_logits=rel_logits,
+        node_type_preds=node_type_preds,
+        child_of_whether_preds=child_of_whether,
+        is_root_logits=is_root_logits,
+    )
+
+    assert graph.get_edge(node_at(graph, 2), node_at(graph, 0)).label == "@expression"
+    assert graph.get_edge(node_at(graph, 2), node_at(graph, 1)).label == "pred.arg.1"
+    assert graph.get_edge(node_at(graph, 0), node_at(graph, 1)) is None
+    assert info["ilp"]["static_reject_counts"]["PUNCTUATIONAL_PRED_ARG_PARENT"] >= 1
     assert "validation_errors" not in info

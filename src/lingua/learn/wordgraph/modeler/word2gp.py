@@ -71,6 +71,25 @@ def _node_start(node: GPGNode) -> int:
     return min(starts) if starts else 10**9
 
 
+def _has_as_shorthand_outgoing(lingua_graph: GPGraph, node: GPGNode) -> bool:
+    return any(str(edge.label).startswith("as:") for _, edge in lingua_graph.children(node))
+
+
+def _as_punctuation_children(lingua_graph: GPGraph, node: GPGNode) -> list[GPGNode]:
+    return [
+        child
+        for child, edge in lingua_graph.children(node)
+        if str(edge.label) == "as:punctuation"
+    ]
+
+
+def _is_punctuation_shorthand_root(lingua_graph: GPGraph, node: GPGNode) -> bool:
+    return (
+        getattr(node, "pos", None) == "PunctuationalConstant"
+        and bool(_as_punctuation_children(lingua_graph, node))
+    )
+
+
 def _punctuation_restore_order(parent: GPGNode, children: list[GPGNode]) -> list[GPGNode]:
     """Order repeated ``@punctuation_of`` children from inner to outer."""
 
@@ -149,9 +168,13 @@ def choose_primary_root(lingua_graph: GPGraph, roots):
             descendant_count = len(nx.descendants(lingua_graph.g, node.ID))
         except Exception:
             descendant_count = 0
+        is_sentence_punctuation_root = int(_is_punctuation_shorthand_root(lingua_graph, node))
+        has_as_shorthand_outgoing = int(_has_as_shorthand_outgoing(lingua_graph, node))
         is_punctuation = int(getattr(node, "pos", None) == "PunctuationalConstant")
         root_scores.append(
             (
+                is_sentence_punctuation_root,
+                has_as_shorthand_outgoing,
                 is_punctuation,
                 -descendant_count,
                 *_node_sort_key(lingua_graph, node),
@@ -159,6 +182,33 @@ def choose_primary_root(lingua_graph: GPGraph, roots):
             )
         )
     return min(root_scores)[-1]
+
+
+def choose_fallback_parent(lingua_graph: GPGraph, primary_root: GPGNode, extra_roots=None):
+    """Find a node in the primary component that can emit fallback edges."""
+    candidate_ids = {primary_root.ID}
+    candidate_ids.update(nx.descendants(lingua_graph.g, primary_root.ID))
+    candidates = [lingua_graph.get_node(node_id) for node_id in candidate_ids]
+    candidates = [node for node in candidates if node is not None]
+    if not candidates:
+        return primary_root
+    if extra_roots:
+        safe_candidates = [
+            node
+            for node in candidates
+            if all(not nx.has_path(lingua_graph.g, root.ID, node.ID) for root in extra_roots)
+        ]
+        if safe_candidates:
+            candidates = safe_candidates
+
+    def score(node: GPGNode):
+        return (
+            int(_has_as_shorthand_outgoing(lingua_graph, node)),
+            int(getattr(node, "pos", None) == "PunctuationalConstant"),
+            *_node_sort_key(lingua_graph, node),
+        )
+
+    return min(candidates, key=score)
 
 
 def ensure_single_rooted_dag(lingua_graph: GPGraph, fallback_label="nonsense"):
@@ -181,18 +231,21 @@ def ensure_single_rooted_dag(lingua_graph: GPGraph, fallback_label="nonsense"):
         return lingua_graph, False
 
     primary_root = choose_primary_root(lingua_graph, roots)
+    extra_roots = [root for root in roots if root != primary_root]
+    fallback_parent = choose_fallback_parent(lingua_graph, primary_root, extra_roots)
     repair_info = {
         "type": "multiple_roots",
         "fallback_label": fallback_label,
         "primary_root": lingua_graph.node_text(primary_root),
+        "fallback_parent": lingua_graph.node_text(fallback_parent),
         "extra_roots": [],
     }
 
-    for root in sorted((r for r in roots if r != primary_root), key=lambda n: _node_sort_key(lingua_graph, n)):
-        if nx.has_path(lingua_graph.g, root.ID, primary_root.ID):
+    for root in sorted(extra_roots, key=lambda n: _node_sort_key(lingua_graph, n)):
+        if nx.has_path(lingua_graph.g, root.ID, fallback_parent.ID):
             raise ValueError("Converted Lingua graph has roots that would create a cycle if repaired")
-        if not lingua_graph.has_edge(primary_root, root):
-            lingua_graph.add_relation(primary_root, root, fallback_label)
+        if not lingua_graph.has_edge(fallback_parent, root):
+            lingua_graph.add_relation(fallback_parent, root, fallback_label)
             repair_info["extra_roots"].append(lingua_graph.node_text(root))
 
     lingua_graph.meta.setdefault("word2gp_repairs", []).append(repair_info)

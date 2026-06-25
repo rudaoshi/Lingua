@@ -169,8 +169,8 @@ def test_train_schema_labels_are_valid():
 
     assert label_counts["nonsense"] == 0
     assert label_counts.get("as:nonsense", 0) == 0
-    assert aux_counts["Ref"] == 715
-    assert aux_counts["Modification"] == 6707
+    assert aux_counts["Ref"] == 1207
+    assert aux_counts["Modification"] == 8657
 
 
 def test_aux_symbol_labels_match_required_node_types():
@@ -209,6 +209,45 @@ def test_func_arg_symbol_wrappers_are_not_unary():
             )
 
 
+def test_aux_functor_func_arg_children_are_parallel():
+    for filename, line_number, example in iter_lingua_examples():
+        graph = example["lingua"]["graph"]
+        nodes = graph["nodes"]
+        outgoing = defaultdict(list)
+        adjacency = [[] for _ in nodes]
+        for edge in graph["edges"]:
+            outgoing[edge["start"]].append(edge)
+            adjacency[edge["start"]].append(edge["end"])
+
+        for functor_index, node in enumerate(nodes):
+            spans = node["spans"]
+            if not is_aux_spans(spans) or spans not in {"Expression", "List", "Parataxis"}:
+                continue
+            func_arg_edges = [
+                edge
+                for edge in outgoing[functor_index]
+                if edge["label"] == "func.arg"
+            ]
+            for left_offset, left_edge in enumerate(func_arg_edges):
+                for right_edge in func_arg_edges[left_offset + 1 :]:
+                    assert not is_reachable(left_edge["end"], right_edge["end"], adjacency), (
+                        filename,
+                        line_number,
+                        functor_index,
+                        left_edge,
+                        right_edge,
+                        example["sentence"],
+                    )
+                    assert not is_reachable(right_edge["end"], left_edge["end"], adjacency), (
+                        filename,
+                        line_number,
+                        functor_index,
+                        right_edge,
+                        left_edge,
+                        example["sentence"],
+                    )
+
+
 def test_prefix_hyphen_modification_bodies_close_left_part():
     blocked_right_types = {
         "FactualPredicator",
@@ -223,8 +262,16 @@ def test_prefix_hyphen_modification_bodies_close_left_part():
         nodes = graph["nodes"]
         words = example["lingua"]["words"]
         outgoing = defaultdict(list)
+        adjacency = [[] for _ in nodes]
         for graph_edge in graph["edges"]:
             outgoing[graph_edge["start"]].append(graph_edge)
+            adjacency[graph_edge["start"]].append(graph_edge["end"])
+        token_owner = {}
+        for node_index, node in enumerate(nodes):
+            if is_aux_spans(node["spans"]):
+                continue
+            for token_index in node_token_indexes(node):
+                token_owner[token_index] = node_index
 
         for edge in graph["edges"]:
             source = nodes[edge["start"]]
@@ -259,6 +306,17 @@ def test_prefix_hyphen_modification_bodies_close_left_part():
                 for child_edge in outgoing[edge["end"]]
                 if child_edge["label"] == "as:punctuation"
             ]
+            if not close_edges:
+                other_children = [
+                    child_edge
+                    for child_edge in outgoing[edge["end"]]
+                    if not child_edge["label"].startswith("as:")
+                ]
+                left_owner = token_owner.get(hyphen_bounds[0] - 1)
+                if other_children or (
+                    left_owner is not None and is_reachable(left_owner, edge["start"], adjacency)
+                ):
+                    continue
             assert len(close_edges) == 1, (
                 filename,
                 line_number,
@@ -414,6 +472,16 @@ def test_relative_ref_arg2_uses_expected_shape():
                 continue
 
             target = nodes[edge["end"]]
+            assert not (
+                is_aux_spans(target["spans"])
+                and target["spans"] in {"Apposition", "Attribute"}
+            ), (
+                filename,
+                line_number,
+                edge,
+                target,
+                example["sentence"],
+            )
             target_text = node_text(target, words).lower()
             if target_text in RELATIVE_REF_ARG2_DIRECT_ADVERBS:
                 func_arg_edges = [
@@ -479,6 +547,27 @@ def test_relative_ref_arg2_uses_expected_shape():
                     variable,
                     example["sentence"],
                 )
+
+
+def test_what_is_not_ref_antecedent():
+    for filename, line_number, example in iter_lingua_examples():
+        graph = example["lingua"]["graph"]
+        nodes = graph["nodes"]
+        words = example["lingua"]["words"]
+
+        for edge in graph["edges"]:
+            source = nodes[edge["start"]]
+            if source["spans"] != "Ref" or edge["label"] != "pred.arg.1":
+                continue
+
+            target = nodes[edge["end"]]
+            assert node_text(target, words).lower() != "what", (
+                filename,
+                line_number,
+                edge,
+                target,
+                example["sentence"],
+            )
 
 
 def test_apposition_punctuation_arg1_is_host_close_wrapper():
@@ -704,8 +793,8 @@ def test_train_graphs_are_single_rooted_dags():
         assert len(reachable) == len(nodes), (line_number, example["sentence"])
         assert_acyclic(adjacency)
 
-    assert root_type_counts["PunctuationalConstant"] == 9193
-    assert root_type_counts["GeneralFunctor"] == 268
+    assert root_type_counts["PunctuationalConstant"] == 10071
+    assert root_type_counts["GeneralFunctor"] == 238
 
 
 def test_eval_graphs_are_single_rooted_dags():
@@ -770,8 +859,8 @@ def test_train_aux_structures_have_required_edges():
                     example["sentence"],
                 )
 
-    assert aux_edge_counts["Ref"] == 715
-    assert aux_edge_counts["Modification"] == 6707
+    assert aux_edge_counts["Ref"] == 1207
+    assert aux_edge_counts["Modification"] == 8657
 
 
 def test_numeric_colon_formats_use_expression_functors():
@@ -972,4 +1061,4 @@ def test_whether_question_punctuation_children_are_wrappers_not_leaves():
                 if chain_has_question:
                     question_wrapper_count += 1
 
-    assert question_wrapper_count == 318
+    assert question_wrapper_count == 319

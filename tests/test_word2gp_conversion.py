@@ -110,6 +110,74 @@ def test_ensure_single_rooted_dag_does_not_prefer_punctuation_root():
     assert graph.meta["word2gp_repairs"][0]["primary_root"] == "runs"
 
 
+def test_ensure_single_rooted_dag_does_not_retarget_punctuation_shorthand_root():
+    graph = GPGraph()
+    graph.words = ["runs", "quickly", "."]
+    predicate = graph.add_node(GPGPhraseNode(spans=[(0, 0)], pos="FactualPredicator"))
+    adverb = graph.add_node(GPGPhraseNode(spans=[(1, 1)], pos="ModificationalConstant"))
+    punctuation = graph.add_node(GPGPhraseNode(spans=[(2, 2)], pos="PunctuationalConstant"))
+    graph.add_relation(predicate, adverb, "pred.arg.2")
+    graph.add_relation(punctuation, adverb, "as:punctuation")
+
+    _, updated = ensure_single_rooted_dag(graph)
+
+    assert updated
+    assert root_texts(graph) == ["runs"]
+    assert graph.get_edge(predicate, punctuation).label == "nonsense"
+    assert graph.get_edge(punctuation, adverb).label == "as:punctuation"
+    assert graph.meta["word2gp_repairs"][0]["fallback_label"] == "nonsense"
+
+
+def test_ensure_single_rooted_dag_avoids_as_shorthand_parent_root():
+    graph, (a_node, b_node, c_node) = make_graph()
+    graph.add_relation(a_node, c_node, "as:modification")
+
+    _, updated = ensure_single_rooted_dag(graph)
+
+    assert updated
+    assert root_texts(graph) == ["b"]
+    assert graph.get_edge(b_node, a_node).label == "nonsense"
+    assert graph.get_edge(a_node, c_node).label == "as:modification"
+    assert graph.meta["word2gp_repairs"][0]["primary_root"] == "b"
+
+
+def test_ensure_single_rooted_dag_uses_safe_descendant_when_roots_have_as_shorthand():
+    graph = GPGraph()
+    graph.words = ["a", "b", "c", "d"]
+    a_node = graph.add_node(GPGPhraseNode(spans=[(0, 0)], pos="NominalConstant"))
+    b_node = graph.add_node(GPGPhraseNode(spans=[(1, 1)], pos="NominalConstant"))
+    c_node = graph.add_node(GPGPhraseNode(spans=[(2, 2)], pos="NominalConstant"))
+    d_node = graph.add_node(GPGPhraseNode(spans=[(3, 3)], pos="NominalConstant"))
+    graph.add_relation(a_node, c_node, "as:modification")
+    graph.add_relation(b_node, d_node, "as:modification")
+
+    _, updated = ensure_single_rooted_dag(graph)
+
+    assert updated
+    assert root_texts(graph) == ["a"]
+    assert graph.get_edge(c_node, b_node).label == "nonsense"
+    assert graph.get_edge(a_node, c_node).label == "as:modification"
+    assert graph.get_edge(b_node, d_node).label == "as:modification"
+    assert graph.meta["word2gp_repairs"][0]["fallback_parent"] == "c"
+
+
+def test_ensure_single_rooted_dag_avoids_fallback_parent_reachable_from_extra_root():
+    graph = GPGraph()
+    graph.words = ["head", "inner", "."]
+    head = graph.add_node(GPGPhraseNode(spans=[(0, 0)], pos="FactualPredicator"))
+    inner = graph.add_node(GPGPhraseNode(spans=[(1, 1)], pos="ModificationalConstant"))
+    punctuation = graph.add_node(GPGPhraseNode(spans=[(2, 2)], pos="PunctuationalConstant"))
+    graph.add_relation(head, inner, "pred.arg.2")
+    graph.add_relation(punctuation, inner, "as:punctuation")
+
+    _, updated = ensure_single_rooted_dag(graph)
+
+    assert updated
+    assert root_texts(graph) == ["head"]
+    assert graph.get_edge(head, punctuation).label == "nonsense"
+    assert graph.meta["word2gp_repairs"][0]["fallback_parent"] == "head"
+
+
 def load_sample(split, index):
     line = (ROOT / "data" / f"{split}.jsonl").read_text().splitlines()[index]
     return json.loads(line)

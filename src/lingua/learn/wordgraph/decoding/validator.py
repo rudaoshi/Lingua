@@ -26,6 +26,7 @@ class EdgeValidationCode(IntEnum):
     PUNCTUATION_CONSTRAINT_VIOLATED = 21
     FACTUAL_PREDICATOR_CONSTRAINT_VIOLATED = 22
     MODIFICATION_TRIANGLE_ALL_MOD_EDGES = 23
+    PUNCTUATIONAL_PRED_ARG_PARENT = 24
 
 
 class EdgeValidator:
@@ -92,6 +93,14 @@ class EdgeValidator:
         """
         s = str(label)
         return s.startswith("@modification")
+
+    @staticmethod
+    def _has_direct_pred_arg_component(label_edges: set) -> bool:
+        return any(str(edge).startswith("pred.arg.") for edge in label_edges)
+
+    @staticmethod
+    def _has_reverse_pred_arg_component(label_edges: set) -> bool:
+        return any(str(edge).startswith("reverse_pred.arg.") for edge in label_edges)
 
     def _has_any_edge_between(self, a: int, b: int) -> bool:
         """Undirected existence of an edge between nodes a and b (any label, either direction)."""
@@ -221,9 +230,16 @@ class EdgeValidator:
             if  "as:modification" in lbl_edges:
                 return EdgeValidationCode.FACTUAL_PREDICATOR_CONSTRAINT_VIOLATED
 
-        # if self.node_types[p_idx] == "PunctuationalConstant":
-        #     if not "as:punctuation" in lbl_edges:
-        #         return EdgeValidationCode.PUNCTUATION_ONLY_CONNECTS_LEAF_NODE
+        if (
+            self.node_types[p_idx] == "PunctuationalConstant"
+            and self._has_direct_pred_arg_component(lbl_edges)
+        ):
+            return EdgeValidationCode.PUNCTUATIONAL_PRED_ARG_PARENT
+        if (
+            self.node_types[c_idx] == "PunctuationalConstant"
+            and self._has_reverse_pred_arg_component(lbl_edges)
+        ):
+            return EdgeValidationCode.PUNCTUATIONAL_PRED_ARG_PARENT
             
         if "punctuation" in lbl_edges:
             if self.node_outgoing_edges.get(c_idx, []):

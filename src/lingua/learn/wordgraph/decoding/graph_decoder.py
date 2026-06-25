@@ -1,6 +1,7 @@
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import numpy as np
 import os
+import re
 from collections import defaultdict
 from lingua.structure.gpgraph import GPGraph, GPGPhraseNode, GPGEdge, GPGAuxNode
 from lingua.learn.wordgraph.decoding.statistics import WordLinguaStatistics
@@ -11,6 +12,20 @@ from lingua.learn.wordgraph.decoding.validator import EdgeValidator
 
 import logging 
 logger = logging.getLogger(__name__)
+
+
+HARD_VALIDATOR_CODES = {
+    EdgeValidationCode.DUPLICATED_EDGE_LABELS,
+    EdgeValidationCode.PUNCTUATIONAL_PRED_ARG_PARENT,
+}
+
+PREDICATOR_NODE_TYPES = {
+    "FactualPredicator",
+    "LogicalPredicator",
+    "AppositionalPredicator",
+    "AttributePredicator",
+    "ReferentialPredicator",
+}
 
 
 class GreedyPatternDecoder:
@@ -286,6 +301,7 @@ class GreedyPatternDecoder:
             "phase3_failures": [],
             "phase4_force_connects": [],
             "phase4_multihead_fixes": [],
+            "node_type_repairs": [],
             # Debug-only: detailed per-component traces for Phase 3/4
             "phase3_components": [],
             "phase4_add_edge_failures": [],
@@ -297,7 +313,23 @@ class GreedyPatternDecoder:
             type_id = int(node_type_preds[i])
             if type_id not in self.id2node_type:
                 raise ValueError(f"Predicted node type id is not in model vocabulary: {type_id}")
-            node_types.append(self.id2node_type[type_id])
+            node_type = self.id2node_type[type_id]
+            if (
+                node_type in PREDICATOR_NODE_TYPES
+                and self._is_pure_punctuation_or_symbol_text(words[i])
+                and "PunctuationalConstant" in set(self.id2node_type.values())
+            ):
+                decoding_info["node_type_repairs"].append(
+                    {
+                        "token_index": int(i),
+                        "token": str(words[i]),
+                        "old_type": node_type,
+                        "new_type": "PunctuationalConstant",
+                        "reason": "pure_punctuation_or_symbol_cannot_be_predicator",
+                    }
+                )
+                node_type = "PunctuationalConstant"
+            node_types.append(node_type)
         
         # Convert logits to probabilities
         arc_probs = self._sigmoid(arc_logits)
@@ -1219,22 +1251,21 @@ class GreedyPatternDecoder:
                 })
                 return False
 
-            # Keep frame-arity constraints hard even when a final root repair is
-            # allowed to relax softer constraints. In particular, a predicator
-            # must not get duplicate pred.arg.x / variable / body edges.
+            # Keep semantic well-formedness constraints hard even when a final
+            # root repair is allowed to relax softer constraints.
             code = validator.validate(
                 p_idx, c_idx, label,
                 mode=validation_mode,
                 check_cycle=True,
                 check_pattern=check_pattern,
             )
-            if code == EdgeValidationCode.DUPLICATED_EDGE_LABELS:
+            if code in HARD_VALIDATOR_CODES:
                 if self.debug and context != "phase4_rollback":
                     decoding_info["phase4_add_edge_failures"].append({
                         "parent": int(p_idx),
                         "child": int(c_idx),
                         "label": str(label),
-                        "reason": "hard frame-arity constraint rejected",
+                        "reason": "hard semantic constraint rejected",
                         "validator_code": str(code.name),
                         "context": str(context),
                         "meta": meta,
@@ -1387,7 +1418,7 @@ class GreedyPatternDecoder:
                 )
                 if code == EdgeValidationCode.OK:
                     return lbl, rel_prob, "valid"
-                if code == EdgeValidationCode.DUPLICATED_EDGE_LABELS:
+                if code in HARD_VALIDATOR_CODES:
                     continue
                 if topology_only and not would_create_cycle(p_idx, c_idx):
                     return lbl, rel_prob, f"topology_only:{code.name}"
@@ -2239,6 +2270,8 @@ class GreedyPatternDecoder:
         by_pair: Dict[Tuple[int, int], List[int]] = defaultdict(list)
         incoming_by_child: Dict[int, List[int]] = defaultdict(list)
         outgoing_by_parent: Dict[int, List[int]] = defaultdict(list)
+        as_outgoing_by_parent: Dict[int, List[int]] = defaultdict(list)
+        non_as_outgoing_by_parent: Dict[int, List[int]] = defaultdict(list)
         full_label_by_parent: Dict[Tuple[int, str], List[int]] = defaultdict(list)
         frame_by_node: Dict[Tuple[int, str], List[int]] = defaultdict(list)
         next_in_by_node: Dict[int, List[int]] = defaultdict(list)
@@ -2261,6 +2294,10 @@ class GreedyPatternDecoder:
             by_pair[pair_key].append(var_idx)
             incoming_by_child[child_idx].append(var_idx)
             outgoing_by_parent[parent_idx].append(var_idx)
+            if label.startswith("as:"):
+                as_outgoing_by_parent[parent_idx].append(var_idx)
+            else:
+                non_as_outgoing_by_parent[parent_idx].append(var_idx)
             full_label_by_parent[(parent_idx, label)].append(var_idx)
             pair_any_vars[undirected_pair].append(var_idx)
             if _is_modification_label(label):
@@ -2348,6 +2385,22 @@ class GreedyPatternDecoder:
             if bonus:
                 terms.append((root_offset + parent_idx, -float(bonus)))
             _add_constraint(terms, -np.inf, float(base_max))
+
+        # as:* shorthand edges are complete shorthand structures: if a node
+        # emits any as:* edge, it cannot emit any other semantic edge.
+        as_shorthand_exclusion_constraints = 0
+        for parent_idx, as_idxs in as_outgoing_by_parent.items():
+            if not as_idxs:
+                continue
+            _add_constraint([(i, 1.0) for i in as_idxs], -np.inf, 1.0)
+            as_shorthand_exclusion_constraints += 1
+            for non_as_idx in non_as_outgoing_by_parent.get(parent_idx, []):
+                _add_constraint(
+                    [(non_as_idx, 1.0)] + [(i, 1.0) for i in as_idxs],
+                    -np.inf,
+                    1.0,
+                )
+                as_shorthand_exclusion_constraints += 1
 
         # Frame arity: no repeated pred.arg.x / variable / body for the same logical parent.
         for idxs in frame_by_node.values():
@@ -2631,6 +2684,7 @@ class GreedyPatternDecoder:
             "at_chain_conflict_constraints": int(at_conflict_count),
             "aux_child_subgraph_constraints": int(aux_child_subgraph_constraints),
             "modification_triangle_constraints": int(triangle_constraints),
+            "as_shorthand_exclusion_constraints": int(as_shorthand_exclusion_constraints),
             "triangle_constraints_truncated": bool(triangle_truncated),
             "children_with_truncated_candidates": truncated_children[:20],
             "static_reject_counts": dict(static_reject_counts),
@@ -3110,13 +3164,60 @@ class GreedyPatternDecoder:
                     f"Invalid edge label not in training vocabulary: "
                     f"'{graph.node_text(parent)}' --{edge_label}--> '{graph.node_text(child)}'"
                 )
+
+        def _node_type(node: Any) -> Optional[str]:
+            pos = getattr(node, "pos", None)
+            if pos:
+                return str(pos)
+            return None
+
+        def _is_pure_punctuation_or_symbol(node: Any) -> bool:
+            text = graph.node_text(node)
+            return bool(text) and re.fullmatch(r"[\W_]+", str(text)) is not None
+
+        # Word-level punctuation tokens are relation leaves; they must not be
+        # logical predicate parents. This still allows standardized Lingua's
+        # auxiliary `spans: "Punctuation"` reification outside the word decoder.
+        for parent, edge, child in list(graph.edges()):
+            edge_label = str(edge.label)
+            comps = set(edge_label.split("+"))
+            parent_type = _node_type(parent)
+            child_type = _node_type(child)
+            if (
+                parent_type == "PunctuationalConstant"
+                and EdgeValidator._has_direct_pred_arg_component(comps)
+            ):
+                errors.append(
+                    "Invalid PunctuationalConstant logical predicate parent: "
+                    f"'{graph.node_text(parent)}' --{edge_label}--> '{graph.node_text(child)}'"
+                )
+            if (
+                child_type == "PunctuationalConstant"
+                and EdgeValidator._has_reverse_pred_arg_component(comps)
+            ):
+                errors.append(
+                    "Invalid PunctuationalConstant logical predicate parent via reverse label: "
+                    f"'{graph.node_text(parent)}' --{edge_label}--> '{graph.node_text(child)}'"
+                )
         
         # 2. Check node types
         allowed_node_types = set(self.id2node_type.values())
+        predicator_node_types = {
+            "FactualPredicator",
+            "LogicalPredicator",
+            "AppositionalPredicator",
+            "AttributePredicator",
+            "ReferentialPredicator",
+        }
         for node in list(graph.nodes()):
             if hasattr(node, 'pos') and node.pos:
                 if node.pos not in allowed_node_types:
                     errors.append(f"Invalid node type: '{node.pos}' for node '{graph.node_text(node)}'")
+                if node.pos in predicator_node_types and _is_pure_punctuation_or_symbol(node):
+                    errors.append(
+                        "Invalid pure punctuation/symbol predicator node: "
+                        f"'{graph.node_text(node)}' typed as {node.pos}"
+                    )
         
         # 3. Check DAG/topology
         # 3a. Check for cycles (DAG requirement)
@@ -3153,6 +3254,10 @@ class GreedyPatternDecoder:
     def _sigmoid(self, x: np.ndarray) -> np.ndarray:
         x64 = np.asarray(x, dtype=np.float64)
         return 1 / (1 + np.exp(-np.clip(x64, -40, 40)))
+
+    @staticmethod
+    def _is_pure_punctuation_or_symbol_text(text: str) -> bool:
+        return bool(text) and re.fullmatch(r"[\W_]+", str(text).strip()) is not None
     
     def _softmax(self, x: np.ndarray, axis: int = -1) -> np.ndarray:
         x_max = np.max(x, axis=axis, keepdims=True)
