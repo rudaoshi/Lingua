@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lingua Graph"
+  short_description: "Parse, audit SELF/DESC and repair Lingua graphs with evidence"
+  default_prompt: "Use $lingua-graph to parse or review this Lingua input, check SELF/DESC recoverability and semantic scope, and return the reviewed graph, minimal corrections, evidence and unresolved issues."

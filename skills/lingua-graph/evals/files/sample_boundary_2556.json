@@ -1,0 +1,24 @@
+{
+  "sentence": "Broke out the activities of 1179.",
+  "lingua": {
+    "meta": {},
+    "words": ["Broke", " out", " the", " activities", " of", " 1179", "."],
+    "graph": {
+      "nodes": [
+        {"spans": [[4, 4]], "type": "ModificationalFunctor"},
+        {"spans": [[5, 5]], "type": "NominalConstant"},
+        {"spans": [[3, 3]], "type": "NominalConstant"},
+        {"spans": [[2, 2]], "type": "DeterminerConstant"},
+        {"spans": [[6, 6]], "type": "PunctuationalConstant"},
+        {"spans": [[0, 1]], "type": "FactualPredicator"}
+      ],
+      "edges": [
+        {"start": 0, "end": 1, "label": "body"},
+        {"start": 0, "end": 3, "label": "variable"},
+        {"start": 3, "end": 2, "label": "as:modification"},
+        {"start": 4, "end": 5, "label": "as:punctuation"},
+        {"start": 5, "end": 0, "label": "pred.arg.2"}
+      ]
+    }
+  }
+}

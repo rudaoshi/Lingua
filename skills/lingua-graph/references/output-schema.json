@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cognitive-dynamics.local/schemas/lingua-parse-validator-output.json",
+  "title": "Lingua Graph Validation Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task",
+    "sentence",
+    "verdict",
+    "confidence",
+    "summary",
+    "errors",
+    "corrected_annotation",
+    "parse",
+    "notes"
+  ],
+  "properties": {
+    "task": {
+      "type": "string",
+      "enum": ["validate", "parse", "batch_validate"]
+    },
+    "sentence": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["valid", "minor_error", "major_error", "invalid", "not_applicable"]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "summary": {
+      "type": "string"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error_type",
+          "severity",
+          "location",
+          "violated_rule",
+          "explanation",
+          "suggested_fix",
+          "confidence"
+        ],
+        "properties": {
+          "error_type": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["minor", "major", "critical"]
+          },
+          "location": {
+            "type": "string"
+          },
+          "violated_rule": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "suggested_fix": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "corrected_annotation": {
+      "description": "Complete corrected annotation for non-valid validation results when a safe repair can be proposed; null for valid results or unresolved cases.",
+      "type": ["object", "null"]
+    },
+    "parse": {
+      "type": ["object", "null"],
+      "properties": {
+        "words": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "graph": {
+          "type": "object"
+        },
+        "nodes": {
+          "type": "array"
+        },
+        "edges": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

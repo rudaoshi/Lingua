@@ -1,0 +1,45 @@
+{
+  "name": "lingua-graph-smoke-evals",
+  "version": "0.1.0",
+  "cases": [
+    {
+      "id": "valid-simple-fact",
+      "type": "validate",
+      "prompt": "Use $lingua-graph to validate evals/files/sample_valid.json and return JSON.",
+      "input_file": "files/sample_valid.json",
+      "expected_verdict": "valid",
+      "expected_error_types": []
+    },
+    {
+      "id": "invalid-structure",
+      "type": "validate",
+      "prompt": "Use $lingua-graph to validate evals/files/sample_invalid.json and return JSON.",
+      "input_file": "files/sample_invalid.json",
+      "expected_verdict": "invalid",
+      "expected_error_types": ["SCHEMA_ERROR", "GRAPH_FORM_ERROR"]
+    },
+    {
+      "id": "semantic-arg-error",
+      "type": "validate",
+      "prompt": "Use $lingua-graph to validate the second record in evals/files/sample_sentences.jsonl. The graph gives 'me' as pred.arg.2 and 'a date' as pred.arg.3 for 'give'. Return JSON.",
+      "input_file": "files/sample_sentences.jsonl",
+      "expected_verdict": "major_error",
+      "expected_error_types": ["PREDICATE_ARGUMENT_ERROR"]
+    },
+    {
+      "id": "boundary-omitted-subject-not-object-promotion",
+      "type": "validate",
+      "prompt": "Use $lingua-graph to validate evals/files/sample_boundary_2556.json. Decide whether 'the activities of 1179' should be promoted to pred.arg.1 solely because 'Broke out' lacks an explicit subject. Return JSON.",
+      "input_file": "files/sample_boundary_2556.json",
+      "expected_verdict": "valid",
+      "expected_error_types": []
+    }
+  ],
+  "metrics": [
+    "verdict_accuracy",
+    "error_type_accuracy",
+    "error_location_accuracy",
+    "json_validity",
+    "suggested_fix_acceptability"
+  ]
+}
